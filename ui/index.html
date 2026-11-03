@@ -1,0 +1,1705 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scrcpy — телефон на ПК</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='8' y='2' width='16' height='28' rx='4' fill='%23000'/%3E%3Crect x='10.5' y='6' width='11' height='18' rx='1.5' fill='%23ffe100'/%3E%3C/svg%3E">
+<style>
+/* Midnight-TV look: yellow · black · white, slanted plates, hard offset shadows. */
+:root{
+  --y:#ffe100; --y-deep:#f5c400; --k:#000; --w:#fff; --plate:#0d0d0d; --plate2:#1b1b1b;
+  --line:#3a3a3a; --muted:#a9a9a9; --red:#e3262b; --ok:#ffe100; --focus:#ffffff;
+  --display:"Bahnschrift","Oswald","Arial Narrow","Segoe UI",sans-serif;
+  --body:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  /* legacy tokens used by markup */
+  --ink:#fff; --bg:#111; --panel:#0d0d0d; --teal:#ffe100; --err:#e3262b; --warn:#ffb000; --glow:#ffe100;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;min-height:100%}
+body{color:var(--k);font:14px/1.45 var(--body);-webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(circle at 100% 0, rgba(0,0,0,.16) 1.4px, transparent 1.6px) 0 0/9px 9px,
+    repeating-linear-gradient(-58deg, rgba(0,0,0,.045) 0 3px, transparent 3px 22px),
+    var(--y);
+  background-attachment:fixed}
+
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--k);outline-offset:3px}
+aside :focus-visible,dialog :focus-visible,.phone :focus-visible{outline-color:var(--y)}
+
+.app{max-width:1120px;margin:0 auto;padding:20px 24px 18px;display:grid;
+  grid-template-columns:minmax(0,1fr) 350px;grid-template-rows:auto auto auto 1fr auto;gap:16px 24px;min-height:100vh}
+header{grid-column:1/-1;display:flex;align-items:flex-end;gap:12px 14px;flex-wrap:wrap;padding-bottom:4px}
+.hdr-right{display:flex;align-items:center;gap:14px;flex-wrap:nowrap}
+header h1{font:700 clamp(30px,3.6vw,44px)/0.95 var(--display);font-stretch:75%;margin:0;letter-spacing:.01em;text-transform:uppercase;
+  transform:skewX(-11deg);text-shadow:4px 4px 0 var(--w)}
+header .sub{display:inline-block;margin-top:8px;background:var(--k);color:var(--y);padding:3px 12px;font:600 14px var(--display);
+  transform:skewX(-11deg)}
+header .grow{flex:1}
+
+/* calendar HUD */
+.hud{display:flex;align-items:stretch;transform:skewX(-11deg);box-shadow:5px 5px 0 var(--k);margin-right:6px}
+.hud b{background:var(--w);color:var(--k);font:700 34px/1 var(--display);font-stretch:75%;padding:4px 10px 2px}
+.hud .dw{display:flex;flex-direction:column;background:var(--k);color:var(--w);padding:4px 10px;justify-content:center}
+.hud .dw span{font:700 18px/1 var(--display)}
+.hud .dw small{font:600 12px/1.2 var(--display);color:var(--y);letter-spacing:.04em}
+
+.btn{border:none;background:var(--k);color:var(--w);border-radius:0;padding:8px 16px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;font:600 14.5px/1.15 var(--display);
+  transform:skewX(-10deg);box-shadow:3px 3px 0 rgba(0,0,0,.35);transition:background .08s,color .08s,transform .08s}
+.btn:hover{background:var(--w);color:var(--k)}
+.btn:active{transform:skewX(-10deg) translate(2px,2px);box-shadow:1px 1px 0 rgba(0,0,0,.35)}
+.btn.primary{background:var(--k);color:var(--y);box-shadow:5px 5px 0 var(--w)}
+.btn.primary:hover{background:var(--w);color:var(--k);box-shadow:5px 5px 0 var(--k)}
+.btn.ghost{background:transparent;box-shadow:none;color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px}
+.btn.ghost:hover{background:var(--k);color:var(--y);text-decoration:none}
+.btn.danger{color:var(--red)}
+.btn:disabled{opacity:.45;cursor:default}
+
+/* phones = TV sets */
+.phones{display:flex;flex-wrap:wrap;gap:26px;align-content:flex-start;padding:6px 0 0 4px}
+.phone{width:236px;background:var(--k);color:var(--w);padding:12px 12px 14px;border:3px solid var(--k);
+  box-shadow:8px 8px 0 var(--w),8px 8px 0 3px var(--k);display:flex;flex-direction:column;gap:10px;transform:rotate(-1.2deg)}
+.phone:nth-child(even){transform:rotate(1deg)}
+.screen{height:236px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:14px;
+  color:#e8e8e8;border:2px solid #fff;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.25'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 3px),
+    #1d1d1d;
+  animation:static .35s steps(4) infinite}
+@keyframes static{0%{background-position:0 0,0 0}25%{background-position:-40px 30px,0 1px}50%{background-position:30px -50px,0 2px}75%{background-position:-60px -20px,0 1px}}
+.screen::before{content:"";display:none}
+.phone.on .screen,.phone.live .screen{animation:none;color:var(--k);
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.07) 0 1px, transparent 1px 3px), linear-gradient(165deg,#fff6a8,var(--y) 55%,var(--y-deep))}
+.phone.live .screen{background:repeating-linear-gradient(0deg, rgba(0,0,0,.08) 0 1px, transparent 1px 3px), linear-gradient(165deg,var(--y),var(--y-deep))}
+.phone.live .screen::before{content:"● В эфире";display:block;position:absolute;top:10px;left:10px;background:var(--red);color:#fff;
+  font:700 12px/1 var(--display);padding:4px 8px;transform:skewX(-10deg);animation:blink 1.6s steps(2) infinite}
+.phone.rec .screen::before{content:"● Запись";background:var(--k);color:var(--red)}
+@keyframes blink{50%{opacity:.6}}
+@media (prefers-reduced-motion: reduce){.screen,.phone.live .screen::before{animation:none}}
+.screen .name{font:700 27px/1 var(--display);font-stretch:80%;text-transform:uppercase;word-break:break-word;transform:skewX(-8deg)}
+.screen .how{font-size:12.5px;margin-top:6px;font-weight:600}
+.phone.off .screen .name{color:#fff;text-shadow:2px 2px 0 #000}
+.phone.off .screen .how{display:inline-block;align-self:flex-start;background:#000;color:var(--y);padding:2px 8px;font:600 12px var(--display)}
+.phone .actions{display:flex;flex-direction:column;gap:8px}
+.phone .actions .row{display:flex;gap:8px}
+.phone .actions .row .btn{flex:1 1 0;min-width:0;justify-content:center;padding:7px 6px;font-size:13.5px;white-space:normal;text-align:center;line-height:1.15;
+  background:var(--plate2);color:var(--w);box-shadow:2px 2px 0 #444}
+.phone .actions .row .btn:hover{background:var(--y);color:var(--k)}
+.phone .actions .btn.primary{justify-content:center;padding:10px;background:var(--y);color:var(--k);box-shadow:4px 4px 0 var(--w);font-size:16px}
+.phone .actions .btn.primary:hover{background:var(--w)}
+.phone .actions .btn.ghost,.phone .actions .row .btn.ghost{color:var(--muted);align-self:center;background:transparent;box-shadow:none}
+.phone .actions .btn.ghost:hover{color:var(--k);background:var(--y)}
+.phone.off .hint{font-size:12.5px;color:#cfcfcf;padding:0 2px}
+.phone .more{display:flex;justify-content:center}
+.recbtn.on{background:var(--red) !important;color:#fff !important}
+.btn.on-cam{background:var(--y) !important;color:var(--k) !important}
+.recdot{display:inline-block;width:8px;height:8px;background:var(--red);margin-right:6px;vertical-align:1px;animation:blink 1.2s steps(2) infinite}
+.bat{position:absolute;top:10px;right:10px;font:700 13px/1 var(--display);padding:4px 8px;background:var(--k);color:var(--y);transform:skewX(-10deg)}
+.bat.low{background:var(--red);color:#fff}
+.linkline{justify-content:center;font-size:12.5px !important;padding:2px 6px !important;text-decoration:none !important}
+.callbox{position:absolute;inset:0;z-index:3;background:rgba(0,0,0,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:12px;text-align:center;color:#fff;animation:cbIn .3s var(--snap)}
+@keyframes cbIn{from{transform:scale(.6) rotate(-6deg);opacity:0}}
+.callbox .cb-tag{background:var(--y);color:#000;font:700 14px var(--display);text-transform:uppercase;padding:3px 10px;transform:skewX(-10deg)}
+.callbox.talk .cb-tag{background:#fff}
+.callbox b{font:700 24px/1.05 var(--display);font-stretch:80%;word-break:break-word;transform:skewX(-8deg)}
+.callbox small{font-size:11px;color:#bbb;line-height:1.3}
+.cb-btns{display:flex;gap:8px;width:100%}
+.cb-btns .btn{flex:1;justify-content:center;padding:9px 6px;font-size:15px}
+.btn.cb-yes{background:var(--y);color:#000;box-shadow:3px 3px 0 #fff}
+.btn.cb-no{background:var(--red);color:#fff;box-shadow:3px 3px 0 #fff}
+.phone.ringing{animation:ring 1s steps(8) infinite}
+@keyframes ring{0%,40%,100%{transform:rotate(-1.2deg)}5%{transform:rotate(-4deg) translateX(-3px)}10%{transform:rotate(2deg) translateX(3px)}15%{transform:rotate(-3deg)}20%{transform:rotate(1.5deg)}25%{transform:rotate(-1.2deg)}}
+dialog.wide{width:min(980px,calc(100vw - 32px))}
+.tabs.flat{padding:0 0 10px}
+.ptools{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ptools .note{flex:1}
+.ptools .btn.primary{background:var(--y);color:#000;box-shadow:4px 4px 0 #fff}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;max-height:min(58vh,520px);overflow:auto;padding:4px 4px 8px}
+.tile{position:relative;aspect-ratio:3/4;background:#1b1b1b;border:2px solid #333;cursor:pointer;overflow:hidden;padding:0;color:#fff}
+.tile img,.tile video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.tile .tmeta{position:absolute;left:0;right:0;bottom:0;font:600 11px var(--display);background:linear-gradient(transparent,rgba(0,0,0,.85));padding:14px 6px 4px;text-align:left}
+.tile .play{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:14px}
+.tile .chk{position:absolute;top:6px;right:6px;width:22px;height:22px;border:2px solid #fff;background:rgba(0,0,0,.4);transform:skewX(-10deg);font:700 14px/18px var(--display);text-align:center;color:#000}
+.tile.sel{border-color:var(--y);box-shadow:0 0 0 2px var(--y)}
+.tile.sel .chk{background:var(--y);border-color:var(--y)}
+.tile.sel .chk::after{content:"✓"}
+.tile .have{position:absolute;top:6px;left:6px;font:700 10px var(--display);background:var(--y);color:#000;padding:2px 5px}
+.tile:hover{border-color:#777}
+.tile.cur{border-color:var(--y)}
+.galwrap{display:grid;grid-template-columns:1fr;gap:14px}
+.galwrap.open{grid-template-columns:minmax(0,1fr) 360px}
+.viewer{display:flex;flex-direction:column;gap:10px}
+.vmedia{background:#000;border:3px solid var(--y);min-height:260px;max-height:min(46vh,440px);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.vmedia img,.vmedia video{max-width:100%;max-height:min(46vh,440px);display:block}
+.vname{font:600 14px var(--display);word-break:break-all}
+.vbtns{display:flex;flex-wrap:wrap;gap:8px}
+.vbtns .btn.primary{background:var(--y);color:#000;box-shadow:3px 3px 0 #fff}
+.vbtns .btn.danger{color:#ff6b6b}
+.fps{font-weight:700} .fps.hi{color:#000} .fps.lo{color:var(--red)}
+.remote{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:2px}
+.rb{border:none;background:#1f1f1f;color:#fff;padding:5px 0;font-size:14px;line-height:1;cursor:pointer;transform:skewX(-8deg);transition:background .08s,transform .1s var(--snap)}
+.rb:hover{background:var(--y);transform:skewX(-8deg) translateY(-2px)}
+.rb:active{transform:skewX(-8deg) scale(.9)}
+.rb.on{background:var(--y);box-shadow:0 0 0 2px #fff inset}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:600 12.5px var(--display);padding:3px 4px 3px 9px;background:var(--y);color:var(--k);transform:skewX(-10deg)}
+.chip button{border:none;background:none;cursor:pointer;color:var(--k);padding:0 4px;font-size:11px}
+.chip button:hover{color:var(--red)}
+.phone.drop{outline:4px dashed var(--y);outline-offset:6px}
+.phone.drop .screen::before{content:"Отпустите — файл уйдёт на телефон";display:flex;position:absolute;inset:0;width:auto;height:auto;margin:0;
+  background:rgba(0,0,0,.85);color:var(--y);animation:none;align-items:center;justify-content:center;text-align:center;padding:20px;font:700 18px var(--display);transform:none}
+
+.empty{border:3px dashed var(--k);width:236px;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  text-align:center;padding:20px;color:var(--k);background:rgba(255,255,255,.25);cursor:pointer;font:600 16px var(--display);transform:rotate(1deg)}
+.empty:hover{background:var(--k);color:var(--y)}
+.empty .plus{font:700 54px/1 var(--display)}
+
+/* side panel */
+aside{background:var(--plate);color:var(--w);padding:18px 18px 16px;align-self:start;box-shadow:9px 9px 0 var(--w),9px 9px 0 3px var(--k);
+  border:3px solid var(--k);grid-row:span 2}
+aside h2{display:inline-block;font:700 21px/1 var(--display);text-transform:uppercase;margin:-30px 0 12px -26px;padding:8px 16px;background:var(--y);color:var(--k);
+  transform:skewX(-11deg);box-shadow:4px 4px 0 var(--k)}
+aside h3{font:700 15px/1.2 var(--display);margin:20px 0 8px;color:var(--y);padding-left:10px;border-left:5px solid var(--y)}
+.auto{padding:10px 12px;margin:2px 0 6px;background:var(--plate2);border-left:5px solid var(--y)}
+.presets{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.prof{position:relative;display:flex}
+.prof > button:first-child{flex:1}
+.presets button{border:2px solid #444;background:transparent;padding:8px 6px;cursor:pointer;text-align:center;color:var(--w);font:600 15px/1.15 var(--display);transform:skewX(-8deg)}
+.presets button small{display:block;color:var(--muted);font:400 11.5px/1.3 var(--body);margin-top:2px}
+.presets button:hover{border-color:var(--y)}
+.presets button[aria-pressed="true"]{background:var(--y);color:var(--k);border-color:var(--y);box-shadow:3px 3px 0 var(--w)}
+.presets button[aria-pressed="true"] small{color:#333}
+.presets button[disabled]{cursor:default}
+.pdel{position:absolute;top:2px;right:4px;border:none !important;background:none !important;padding:2px 5px !important;font-size:11px;color:var(--muted) !important;box-shadow:none !important;transform:none !important}
+.pdel:hover{color:var(--red) !important}
+.psave{margin-top:8px}
+.psave-form{display:flex;gap:6px;margin-top:6px}
+.field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+.field label{flex:1}
+.field select,.field input[type=number]{width:120px;padding:6px 8px;border:2px solid #444;border-radius:0;background:#111;color:var(--w)}
+.field select:focus,.field input:focus,input.text:focus{border-color:var(--y);outline:none}
+.toggle{display:flex;align-items:flex-start;gap:10px;margin:9px 0;cursor:pointer}
+.toggle input{appearance:none;width:36px;height:18px;background:#333;position:relative;flex:none;margin-top:1px;cursor:pointer;transform:skewX(-12deg);border:2px solid #555}
+.toggle input::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:10px;background:#888;transition:transform .12s,background .12s}
+.toggle input:checked{background:var(--k);border-color:var(--y)}
+.toggle input:checked::after{transform:translateX(17px);background:var(--y)}
+.toggle small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+.toggle.small{margin:0;font-size:13px;white-space:nowrap}
+input.text{width:100%;padding:7px 10px;border:2px solid #444;border-radius:0;background:#111;color:var(--w)}
+input.text::placeholder{color:#777}
+details.adv summary{cursor:pointer;color:var(--y);font:600 14px var(--display);margin-top:16px}
+.shortcuts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.shortcuts .btn,.dirrow .btn{padding:6px 10px;font-size:13.5px;background:var(--plate2);box-shadow:2px 2px 0 #444}
+.shortcuts .btn:hover,.dirrow .btn:hover{background:var(--y);color:var(--k)}
+.ver{margin-top:12px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.btn.link{padding:2px 4px;font-size:13.5px;color:var(--y);white-space:normal;text-align:left}
+.btn.link:hover{color:var(--k);background:var(--y)}
+.savedir{margin:8px 0}
+.appupd{margin:14px 0 6px;display:grid;gap:8px}
+.appupd-row{display:flex;gap:8px;align-items:center}
+.appupd .bar{height:6px;background:#0004;max-width:260px}.appupd .bar span{display:block;height:100%;width:0;background:var(--y);transition:width .3s}
+.selfupd{margin:14px 0 4px;display:grid;gap:6px;justify-items:start}
+.selfupd .btn{background:var(--plate2);box-shadow:2px 2px 0 #444}
+.selfupd .btn:hover{background:var(--y);color:var(--k)}
+.savedir small{display:block;font-size:11.5px;word-break:break-all;margin-top:2px}
+.dirrow{display:flex;gap:6px;margin-top:3px}
+.hk{width:150px !important;text-align:center;cursor:pointer;caret-color:transparent;font:600 14px var(--display) !important}
+.note{color:var(--muted);font-size:13px}
+.msg{min-height:20px;font-size:13px}
+.msg.err{color:#ff6b6b} .msg.ok{color:var(--y)}
+
+/* banners */
+.banner{grid-column:1/-1;padding:10px 16px;background:var(--red);color:#fff;font-weight:600;box-shadow:5px 5px 0 var(--k);transform:skewX(-4deg)}
+.upd{grid-column:1/-1;display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:10px 16px;background:var(--k);color:var(--y);
+  box-shadow:5px 5px 0 var(--w);transform:skewX(-4deg);font:600 16px var(--display)}
+.upd .btn.primary{background:var(--y);color:var(--k);box-shadow:3px 3px 0 var(--w)}
+.upd .btn.ghost{color:var(--w)}
+.upd-text{flex:1;min-width:220px}
+.upd-actions{display:flex;gap:8px}
+.upd-bar{flex-basis:100%;height:6px;background:#333;overflow:hidden}
+.upd-bar span{display:block;height:100%;width:0;background:var(--y);transition:width .3s}
+
+/* log */
+.log{grid-column:1/-1}
+.log summary{cursor:pointer;font:600 14px var(--display);user-select:none;display:inline-block;background:var(--k);color:var(--y);padding:3px 12px;transform:skewX(-10deg)}
+.log pre{margin:10px 0 0;max-height:200px;overflow:auto;background:var(--k);color:#e6e6e6;border:3px solid var(--k);box-shadow:6px 6px 0 var(--w);padding:10px 12px;
+  font:12px/1.5 "Cascadia Mono",Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+
+/* dialogs */
+dialog{border:4px solid var(--y);border-radius:0;padding:0;background:var(--plate);color:var(--w);width:min(720px,calc(100vw - 32px));
+  box-shadow:12px 12px 0 var(--k);overflow:visible}
+dialog::backdrop{background:repeating-linear-gradient(-58deg, rgba(0,0,0,.14) 0 2px, transparent 2px 16px), rgba(0,0,0,.55)}
+.dlg-head{display:flex;align-items:center;padding:0 16px 0 0}
+.dlg-head h2{margin:-22px 0 0 -14px;font:700 22px/1 var(--display);text-transform:uppercase;background:var(--y);color:var(--k);padding:9px 18px;
+  transform:skewX(-11deg);box-shadow:5px 5px 0 var(--k);flex:0 1 auto}
+.dlg-head::after{content:"";flex:1}
+.dlg-head .btn{order:2;margin-top:6px;color:var(--w)}
+dialog .btn:not(.primary):not(.ghost){background:#262626;color:var(--w);box-shadow:3px 3px 0 #555}
+dialog .btn:not(.primary):not(.ghost):hover{background:var(--y);color:var(--k)}
+dialog .btn.ghost{color:var(--y)}
+.tabs{display:flex;gap:6px;padding:16px 20px 0;flex-wrap:wrap}
+.tabs button{border:2px solid #444;background:none;padding:6px 14px;cursor:pointer;color:var(--w);font:600 14.5px var(--display);transform:skewX(-10deg)}
+.tabs button[aria-selected="true"]{background:var(--y);color:var(--k);border-color:var(--y)}
+.pane{padding:20px;display:none}
+.pane.active{display:block}
+.qrwrap{display:grid;grid-template-columns:240px 1fr;gap:22px;align-items:start}
+.qr{width:240px;height:240px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;border:4px solid var(--y);box-shadow:6px 6px 0 var(--w)}
+.qr svg{width:100%;height:100%;display:block}
+ol.steps{margin:0;padding-left:22px}
+ol.steps li{margin:0 0 9px}
+ol.steps li::marker{color:var(--y);font:700 16px var(--display)}
+.path{font-weight:700;color:var(--y)}
+.status{margin-top:14px;padding:10px 12px;background:#1b1b1b;display:flex;gap:10px;align-items:center;border-left:5px solid #555}
+.status.done{border-left-color:var(--y);background:#2a2600;color:var(--y)}
+.status.error,.status.timeout{border-left-color:var(--red);background:#2a0d0d}
+.spin{width:16px;height:16px;border:3px solid #444;border-top-color:var(--y);animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.status.done .spin,.status.error .spin,.status.timeout .spin{display:none}
+.form{display:grid;gap:10px;max-width:420px}
+.form label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.form .btn{justify-self:start}
+.form .btn.primary,.apps-body .btn.primary{background:var(--y);color:var(--k);box-shadow:4px 4px 0 var(--w)}
+#appsDlg{width:min(580px,calc(100vw - 32px))}
+.apps-body{padding:16px 20px 20px}
+.apps-tools{display:flex;gap:10px;align-items:center}
+.apps-tools .text{flex:1}
+.apps-tools .btn{color:var(--w)}
+.recent{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.recent:empty{display:none}
+.recent button{border:none;background:var(--y);color:var(--k);padding:5px 12px;cursor:pointer;font:600 14px var(--display);transform:skewX(-10deg)}
+.recent button:hover{background:var(--w)}
+.apps-list{margin-top:10px;max-height:min(52vh,440px);overflow:auto;border:2px solid #333}
+.app-row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid #2a2a2a;cursor:pointer;width:100%;
+  background:none;border-left:none;border-right:none;border-top:none;text-align:left;color:var(--w)}
+.app-row:last-child{border-bottom:none}
+.app-row:hover,.app-row:focus-visible{background:var(--y);color:var(--k)}
+.app-row:hover small,.app-row:focus-visible small{color:#333}
+.app-ava{width:32px;height:32px;flex:none;display:flex;align-items:center;justify-content:center;font:700 17px var(--display);color:#fff;transform:skewX(-10deg)}
+.app-name{flex:1;min-width:0}
+.app-name b{font:600 15px var(--display);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-name small{color:var(--muted);font-size:11.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-state{font:700 12px var(--display);background:var(--k);color:var(--y);padding:2px 8px}
+.apps-empty{padding:26px;text-align:center;color:var(--muted)}
+.conn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 14px}
+.conn-cell{background:#1b1b1b;padding:10px 12px;border-left:5px solid #444}
+.conn-cell small{display:block;color:var(--muted);font-size:12px}
+.conn-cell b{font:700 22px/1.1 var(--display)}
+.conn-cell.bad{border-left-color:var(--red)} .conn-cell.bad b{color:#ff6b6b}
+.conn-cell.good{border-left-color:var(--y)} .conn-cell.good b{color:var(--y)}
+.verdict{padding:12px 14px;margin:6px 0 14px;font-size:14.5px;transform:skewX(-4deg)}
+.verdict b{font:700 17px var(--display)}
+.verdict.good{background:var(--y);color:var(--k)}
+.verdict.ok{background:#ffb000;color:var(--k)}
+.verdict.weak{background:var(--red);color:#fff}
+.tips{margin:0 0 14px;padding-left:18px} .tips li{margin:0 0 6px}
+.tips li::marker{color:var(--y)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) skewX(-10deg);background:var(--y);color:var(--k);padding:10px 18px;
+  font:600 15px var(--display);opacity:0;pointer-events:none;transition:opacity .15s;max-width:80vw;box-shadow:6px 6px 0 var(--k);display:flex;align-items:center;gap:14px;border:2px solid var(--k)}
+.toast.show{opacity:1;pointer-events:auto}
+.toast button{background:var(--k);border:none;color:var(--y);cursor:pointer;padding:3px 10px;font:600 13.5px var(--display)}
+.toast button:hover{background:var(--w);color:var(--k)}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  aside{grid-row:auto}
+  .qrwrap{grid-template-columns:1fr}
+  .qr{margin:0 auto}
+  .hud{order:-1}
+}
+
+/* ===================== motion ===================== */
+:root{--snap:cubic-bezier(.2,1.5,.35,1);--whip:cubic-bezier(.7,0,.2,1)}
+/* drifting stripes on a composited layer (cheap: no repaint) */
+body{background:var(--y)}
+body::after{content:"";position:fixed;inset:-40px;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(circle at 100% 0, rgba(0,0,0,.16) 1.4px, transparent 1.6px) 0 0/9px 9px,
+    repeating-linear-gradient(-58deg, rgba(0,0,0,.05) 0 3px, transparent 3px 22px);
+  animation:drift 26s linear infinite;will-change:transform}
+@keyframes drift{to{transform:translate(-36px,-22px)}}
+
+/* intro wipe: two slanted bars sweep across */
+.wipe{position:fixed;inset:0;z-index:50;pointer-events:none;overflow:hidden}
+.wipe i{position:absolute;top:-20%;bottom:-20%;width:70%;left:-80%;transform:skewX(-18deg)}
+.wipe i:nth-child(1){background:var(--k);animation:sweep .62s var(--whip) forwards}
+.wipe i:nth-child(2){background:var(--w);width:12%;animation:sweep .62s var(--whip) .08s forwards}
+@keyframes sweep{to{left:130%}}
+
+body.intro header h1{animation:slamL .55s var(--snap) .22s both}
+body.intro header .sub{animation:slamL .45s var(--snap) .34s both}
+body.intro .hud{animation:slamR .5s var(--snap) .38s both}
+body.intro .hdr-right .btn{animation:pop .4s var(--snap) both}
+body.intro .hdr-right .btn:nth-of-type(1){animation-delay:.48s}
+body.intro .hdr-right .btn:nth-of-type(2){animation-delay:.54s}
+body.intro aside{animation:slideR .6s var(--snap) .3s both}
+body.intro aside h3{animation:slamL .4s var(--snap) both}
+body.intro aside h3:nth-of-type(1){animation-delay:.55s}
+body.intro aside h3:nth-of-type(2){animation-delay:.6s}
+body.intro aside h3:nth-of-type(3){animation-delay:.65s}
+body.intro aside h3:nth-of-type(4){animation-delay:.7s}
+body.intro .phones > *{animation:deal .55s var(--snap) both}
+body.intro .phones > *:nth-child(1){animation-delay:.42s}
+body.intro .phones > *:nth-child(2){animation-delay:.5s}
+body.intro .phones > *:nth-child(3){animation-delay:.58s}
+body.intro .phones > *:nth-child(4){animation-delay:.66s}
+body.intro .log{animation:slamL .4s var(--snap) .7s both}
+@keyframes slamL{from{transform:translateX(-120vw) skewX(-35deg)}70%{transform:translateX(12px) skewX(-6deg)}to{}}
+@keyframes slamR{from{transform:translateX(120vw) skewX(-35deg)}70%{transform:translateX(-10px) skewX(-6deg)}to{}}
+@keyframes slideR{from{transform:translateX(110%) rotate(4deg);opacity:0}to{}}
+@keyframes deal{from{transform:translate(-40px,-120vh) rotate(-28deg)}75%{transform:translateY(10px) rotate(2deg)}to{}}
+@keyframes pop{from{transform:skewX(-10deg) scale(0)}70%{transform:skewX(-10deg) scale(1.15)}to{}}
+
+/* buttons: snap up on hover, glint on main ones */
+.btn:hover:not(:disabled){transform:skewX(-10deg) translate(-2px,-3px);box-shadow:5px 6px 0 rgba(0,0,0,.45)}
+.btn.primary{position:relative;overflow:hidden}
+.btn.primary::after{content:"";position:absolute;top:-20%;bottom:-20%;width:28%;left:-45%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent);transform:skewX(-20deg)}
+.btn.primary:hover::after{animation:glint .5s var(--whip)}
+@keyframes glint{to{left:130%}}
+.phone{transition:transform .18s var(--snap),box-shadow .18s}
+.phone:hover{transform:rotate(0) translate(-3px,-5px);box-shadow:12px 13px 0 var(--w),12px 13px 0 3px var(--k)}
+.empty{transition:transform .18s var(--snap),background .1s,color .1s}
+.empty:hover{transform:rotate(-1deg) scale(1.03)}
+.empty:hover .plus{animation:spin180 .35s var(--snap)}
+@keyframes spin180{from{transform:rotate(-180deg) scale(.4)}}
+.presets button{transition:transform .14s var(--snap),background .1s,color .1s}
+.presets button:hover{transform:skewX(-8deg) translateY(-2px)}
+.fx-pop{animation:popP .4s var(--snap)}
+@keyframes popP{from{transform:skewX(-8deg) scale(.7)}60%{transform:skewX(-8deg) scale(1.12)}to{transform:skewX(-8deg)}}
+.tabs button{transition:transform .12s var(--snap)}
+.tabs button:hover{transform:skewX(-10deg) translateY(-2px)}
+.app-row{transition:background .06s,padding-left .12s var(--snap)}
+.app-row:hover,.app-row:focus-visible{padding-left:20px}
+
+/* TV: power on (CRT), channel switch, power off */
+.screen .thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;display:none}
+.screen .tgrad{position:absolute;inset:0;display:none;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.8));pointer-events:none}
+.screen.has .thumb,.screen.has .tgrad{display:block}
+.screen.has{color:#fff}
+.screen .name,.screen .how,.screen .bat{position:relative;z-index:1}
+.screen .bat{position:absolute}
+.screen.has .name{text-shadow:2px 2px 0 #000}
+.phone.on.fx-on .screen,.phone.fx-on .screen{animation:crtOn .6s var(--whip)}
+@keyframes crtOn{0%{transform:scale(.7,.012);filter:brightness(6)}35%{transform:scale(1,.012);filter:brightness(4)}65%{transform:scale(1,1.06);filter:brightness(1.6)}100%{transform:none;filter:none}}
+.fx-live .screen::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode:hard-light;animation:chan .5s steps(6) forwards}
+@keyframes chan{0%{opacity:1;background-position:0 0}40%{opacity:.9;background-position:-50px 20px}80%{opacity:.4;background-position:30px -40px}100%{opacity:0}}
+.fx-live .screen .name{animation:glitch .5s steps(5)}
+@keyframes glitch{0%{text-shadow:-4px 0 #e3262b,4px 0 #00e5ff;transform:skewX(-8deg) translateX(-6px)}
+  25%{text-shadow:5px 0 #e3262b,-5px 0 #00e5ff;transform:skewX(-8deg) translateX(5px)}
+  50%{text-shadow:-2px 0 #e3262b,2px 0 #00e5ff;transform:skewX(-20deg) translateX(-2px)}
+  75%{text-shadow:2px 0 #e3262b,-2px 0 #00e5ff;transform:skewX(-8deg) translateX(3px)}100%{text-shadow:none}}
+.fx-off .screen{animation:crtOff .55s var(--whip)}
+@keyframes crtOff{0%{transform:none}40%{transform:scale(1,.012);filter:brightness(5)}55%{transform:scale(.02,.012);filter:brightness(8)}75%{transform:scale(1,.012)}100%{transform:none}}
+/* rolling bar on static */
+.phone.off .screen::after{content:"";position:absolute;left:0;right:0;height:26%;top:-30%;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(255,255,255,.13),transparent);animation:roll 3.2s linear infinite}
+@keyframes roll{to{top:110%}}
+
+/* dialogs slam in */
+dialog[open]{animation:dlgIn .42s var(--snap)}
+dialog[open] .dlg-head h2{animation:slamL .45s var(--snap) .05s both}
+dialog[open]::backdrop{animation:bdIn .25s ease-out}
+@keyframes dlgIn{from{transform:scale(1.25) rotate(-4deg) skewX(-6deg);opacity:0}to{}}
+@keyframes bdIn{from{opacity:0}}
+.pane.active{animation:paneIn .3s var(--snap)}
+@keyframes paneIn{from{transform:translateX(-24px);opacity:0}}
+.verdict{animation:slamL .45s var(--snap)}
+.conn-cell{animation:deal2 .4s var(--snap) both}
+.conn-cell:nth-child(2){animation-delay:.05s}.conn-cell:nth-child(3){animation-delay:.1s}
+.conn-cell:nth-child(4){animation-delay:.15s}.conn-cell:nth-child(5){animation-delay:.2s}.conn-cell:nth-child(6){animation-delay:.25s}
+@keyframes deal2{from{transform:translateY(16px) rotate(-3deg);opacity:0}}
+
+/* toast whips in from the left */
+.toast{transition:none}
+.toast.show{animation:toastIn .38s var(--snap) both}
+.toast.hide{animation:toastOut .22s var(--whip) both;opacity:1}
+@keyframes toastIn{from{transform:translateX(-120vw) skewX(-30deg)}70%{transform:translateX(-48%) skewX(-6deg)}to{transform:translateX(-50%) skewX(-10deg)}}
+@keyframes toastOut{to{transform:translateX(80vw) skewX(-30deg);opacity:0}}
+
+/* calendar flips when the time of day changes */
+.fx-flip{animation:flip .5s var(--snap)}
+@keyframes flip{from{transform:rotateX(90deg)}}
+
+
+/* ===== dive into the phone's screen ===== */
+.dive{position:fixed;inset:0;z-index:60;pointer-events:all;overflow:hidden}
+.dive-tv{position:fixed;overflow:hidden;border:2px solid #fff;transform-origin:0 0;will-change:transform;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.08) 0 1px, transparent 1px 3px), linear-gradient(165deg,#fff6a8,var(--y) 55%,var(--y-deep))}
+.dive-tv .rip{position:absolute;left:50%;top:55%;width:30px;height:30px;margin:-15px;border-radius:50%;
+  border:3px solid rgba(0,0,0,.55);box-shadow:0 0 0 2px rgba(255,255,255,.6) inset;animation:ripple 1.1s ease-out infinite;opacity:0}
+.dive-tv .rip:nth-child(2){animation-delay:.25s}.dive-tv .rip:nth-child(3){animation-delay:.5s}.dive-tv .rip:nth-child(4){animation-delay:.75s}
+@keyframes ripple{0%{transform:scale(.3);opacity:1}100%{transform:scale(9);opacity:0}}
+.dive-tv.img{background-size:cover;background-position:center top;background-color:#000}
+.dive-tv .scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg, rgba(0,0,0,.12) 0 1px, transparent 1px 3px);pointer-events:none}
+.dive.landed .dive-tv{box-shadow:0 0 0 4px var(--y),14px 14px 0 4px #000}
+.dive.landed .dive-tv .scan{animation:shimmer .9s linear infinite}
+@keyframes shimmer{50%{opacity:.35}}
+.dive.out .dive-tv{transition:opacity .2s}
+.dive-tv .nm{position:absolute;left:14px;right:14px;bottom:16px;font:700 27px/1 var(--display);font-stretch:80%;text-transform:uppercase;transform:skewX(-8deg);color:#000}
+.dive-shade{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .35s}
+.dive.go .dive-shade{opacity:1}
+.dive-tunnel{position:fixed;left:50%;top:50%;width:260vmax;height:260vmax;margin:-130vmax 0 0 -130vmax;opacity:0;
+  background:repeating-radial-gradient(circle, #000 0 4vmax, var(--y) 4vmax 8vmax);animation:tunnel .5s linear infinite}
+.dive-tunnel::after{content:"";position:absolute;inset:0;background:repeating-conic-gradient(rgba(255,255,255,.18) 0 6deg, transparent 6deg 30deg);animation:twist 2.4s linear infinite}
+@keyframes tunnel{from{transform:scale(1)}to{transform:scale(1.25)}}
+@keyframes twist{to{transform:rotate(360deg)}}
+.dive.inside .dive-tunnel{opacity:1;transition:opacity .15s}
+.dive-text{position:fixed;left:50%;top:50%;transform:translate(-50%,0) skewX(-11deg) scale(.4);opacity:0;text-align:center;
+  background:#000;color:var(--y);padding:12px 26px;box-shadow:8px 8px 0 #fff;font:700 38px/1 var(--display);font-stretch:75%;text-transform:uppercase;white-space:nowrap}
+.dive-text small{display:block;font:600 15px/1.4 var(--display);color:#fff;text-transform:none;margin-top:6px}
+.dive.inside .dive-text{animation:diveTxt .45s var(--snap) forwards}
+@keyframes diveTxt{to{opacity:1;transform:translate(-50%,0) skewX(-11deg) scale(1)}}
+.dive-flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none}
+.dive.exit .dive-tunnel{animation-direction:reverse}
+.dive.exit .dive-tunnel::after{animation-direction:reverse}
+.dive.exit:not(.inside) .dive-tunnel{opacity:0;transition:opacity .3s}
+.dive.exit .dive-tv{box-shadow:0 0 0 4px var(--y)}
+.fx-shake{animation:shake .45s steps(8) !important}
+@keyframes shake{0%{transform:translate(0,0) rotate(-1.2deg)}20%{transform:translate(-7px,4px) rotate(-3deg)}40%{transform:translate(6px,-5px) rotate(1deg)}
+  60%{transform:translate(-4px,3px) rotate(-2deg)}80%{transform:translate(3px,-2px) rotate(0)}100%{transform:rotate(-1.2deg)}}
+.phone.fx-lost .screen::before{content:"Сигнал потерян";display:flex;position:absolute;left:-4px;right:-4px;top:42%;height:auto;width:auto;margin:0;z-index:2;
+  justify-content:center;background:var(--k);color:var(--y);font:700 19px/1 var(--display);text-transform:uppercase;padding:10px 0;
+  transform:skewY(-6deg);box-shadow:0 0 0 3px var(--y);animation:lostIn .35s var(--snap), blink 1.1s steps(2) .4s 3}
+@keyframes lostIn{from{transform:skewY(-6deg) scaleX(0)}}
+.bat.low{animation:batBlink 1s steps(2) infinite}
+.anote{display:inline-block;margin-top:4px;background:var(--red);color:#fff;padding:1px 6px;font:600 12px var(--display)}
+@keyframes batBlink{50%{background:#fff;color:var(--red)}}
+.dive.out .dive-flash{animation:flashOut .5s ease-out forwards}
+.dive.out .dive-tunnel,.dive.out .dive-text{animation:none;opacity:0;transition:opacity .3s}
+@keyframes flashOut{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+.dive.fade{opacity:0;transition:opacity .35s}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+  .wipe{display:none}
+}
+</style>
+</head>
+<body class="intro">
+<div class="wipe" aria-hidden="true"><i></i><i></i></div>
+<div class="app">
+  <header>
+    <div>
+      <h1>Телефон на экране ПК</h1>
+      <div class="sub" id="sub">Ищу телефоны…</div>
+    </div>
+    <div class="grow"></div>
+    <div class="hdr-right">
+    <div class="hud" aria-label="Дата"><b id="hudDate">--/--</b><div class="dw"><span id="hudDay">--</span><small id="hudTime">&nbsp;</small></div></div>
+    <button class="btn ghost" id="galBtn" title="Ваши скриншоты, записи и фото с телефона">Галерея</button>
+    <button class="btn ghost" id="rescan" title="Заново поискать телефоны в Wi-Fi сети">Обновить</button>
+    <button class="btn primary" id="addBtn">Подключить телефон</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+  <div class="upd" id="updBanner" hidden>
+    <div class="upd-text" id="updText"></div>
+    <div class="upd-bar" id="updBar" hidden><span></span></div>
+    <div class="upd-actions" id="updActions">
+      <button class="btn primary" data-act="updinstall">Обновить</button>
+      <button class="btn ghost" data-act="updnotes">Что нового</button>
+    </div>
+  </div>
+
+  <main class="phones" id="phones" aria-live="polite"></main>
+
+  <aside>
+    <h2>Настройки трансляции</h2>
+    <label class="toggle auto">
+      <input type="checkbox" data-k="autoLaunch">
+      <span>Запускать сразу, как телефон подключится
+        <small>Включили «Отладку по Wi-Fi» на телефоне — экран сам открывается на ПК. Работает и с закрытым окном, пока значок в трее.</small></span>
+    </label>
+
+    <h3>Профиль</h3>
+    <div class="presets" id="profiles" role="group" aria-label="Профиль"></div>
+    <label class="toggle"><input type="checkbox" data-k="autoProfile"><span>Подбирать профиль по связи<small>При подключении: кабель — «Чётко», хороший Wi-Fi — «Лента», слабый — «Экономно». «Игры» и свои профили не трогает.</small></span></label>
+    <div class="psave" id="psave">
+      <button class="btn ghost link" id="psaveOpen">+ Сохранить текущие настройки как профиль</button>
+      <div class="psave-form" id="psaveForm" hidden>
+        <input class="text" id="psaveName" placeholder="Название, например «Кино»" maxlength="30">
+        <button class="btn primary" id="psaveBtn">Сохранить</button>
+      </div>
+    </div>
+
+    <h3>Окно и телефон</h3>
+    <label class="toggle"><input type="checkbox" data-k="fullscreen"><span>Во весь экран</span></label>
+    <label class="toggle"><input type="checkbox" data-k="audio"><span>Звук телефона на ПК</span></label>
+    <label class="toggle"><input type="checkbox" data-k="turnScreenOff"><span>Гасить экран телефона<small>Картинка на ПК остаётся, батарея садится медленнее.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="stayAwake"><span>Не давать телефону уснуть<small>Работает, когда телефон на зарядке.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="alwaysOnTop"><span>Поверх других окон</span></label>
+    <label class="toggle"><input type="checkbox" data-k="toolbar"><span>Кнопки у окна телефона<small>Скриншот, запись, файл и камера прямо возле экрана телефона — не нужно переключаться сюда.</small></span></label>
+
+    <div id="appSection">
+      <h3>Программа</h3>
+      <label class="toggle" id="autostartRow" hidden><input type="checkbox" id="autostart"><span>Запускать вместе с Windows
+        <small>Программа тихо ждёт в трее: включили «Отладку по Wi-Fi» — экран открылся.</small></span></label>
+      <label class="toggle"><input type="checkbox" data-k="uiSounds"><span>Звуки интерфейса<small>Помехи, «вжух» при входе в телефон, звон вспышки, щелчок кинескопа.</small></span></label>
+      <h3>Уведомления и звонки</h3>
+      <label class="toggle"><input type="checkbox" data-k="phoneNotifs"><span>Уведомления телефона на ПК<small>Сообщения из Telegram, ВК и других приложений всплывают в углу Windows. Клик — открыть приложение в окне.</small></span></label>
+      <label class="toggle"><input type="checkbox" data-k="notifText"><span>Показывать текст сообщений<small>Выключите, чтобы видно было только название приложения.</small></span></label>
+      <label class="toggle"><input type="checkbox" data-k="phoneCalls"><span>Входящие звонки на ПК<small>Плашка «Звонит: …» с кнопками «Ответить» и «Сбросить». Говорить — в телефон.</small></span></label>
+      <label class="toggle" id="trayRow" hidden><input type="checkbox" data-k="stayInTray"><span>Оставаться в трее после закрытия окна</span></label>
+      <div class="shortcuts" id="shortcutRow" hidden>
+        <button class="btn" data-act="shortcut" data-where="desktop">Ярлык на рабочий стол</button>
+        <button class="btn" data-act="shortcut" data-where="startmenu">В меню «Пуск»</button>
+      </div>
+      <div id="hkBox" hidden>
+        <h3>Горячие клавиши — работают из любого окна</h3>
+        <div class="field"><label for="hkShot">Скриншот</label><input id="hkShot" class="text hk" data-k="hotkeyShot" readonly placeholder="Выключено"></div>
+        <div class="field"><label for="hkRec">Запись вкл/выкл</label><input id="hkRec" class="text hk" data-k="hotkeyRec" readonly placeholder="Выключено"></div>
+        <small class="note">Щёлкните по полю и нажмите новое сочетание. Backspace — выключить.</small>
+        <div class="msg err" id="hkErr"></div>
+      </div>
+      <div class="appupd">
+        <div><b id="appUpdText">TVPhone —</b> <button class="btn ghost link" data-act="appupdcheck" id="appUpdCheck">Проверить</button></div>
+        <div class="appupd-row" id="appUpdRow" hidden>
+          <button class="btn" data-act="appupdinstall" id="appUpdBtn">Обновить</button>
+          <a class="btn ghost link" id="appUpdNotes" target="_blank" rel="noopener">Что нового</a>
+        </div>
+        <div class="bar" id="appUpdBar" hidden><span></span></div>
+      </div>
+      <label class="toggle"><input type="checkbox" data-k="autoUpdateApp"><span>Обновлять программу автоматически<small>Новые версии скачиваются с GitHub сами. Если открыто окно телефона — подождёт, пока вы его закроете.</small></span></label>
+      <div class="selfupd">
+        <button class="btn" data-act="selfupd" title="Выберите архив новой версии — программа сама закроет всё, что мешает, и заменит файлы">Обновить программу из архива…</button>
+        <small class="note">Или просто перетащите .zip новой версии в это окно. Сейчас: версия <b id="appVer">—</b></small>
+      </div>
+      <div class="ver"><span id="verText">scrcpy —</span> <button class="btn ghost link" data-act="updcheck" id="updCheck">Проверить обновления</button></div>
+    </div>
+
+    <details class="adv">
+      <summary>Дополнительно</summary>
+      <div class="field"><label for="maxSize">Размер, px</label>
+        <select id="maxSize" data-k="maxSize" data-num>
+          <option value="0">Оригинал</option><option value="1920">1920</option><option value="1600">1600</option>
+          <option value="1280">1280</option><option value="1024">1024</option><option value="800">800</option>
+        </select></div>
+      <div class="field"><label for="bitRate">Битрейт, Мбит/с</label>
+        <input id="bitRate" type="number" min="1" max="64" data-k="bitRate" data-num></div>
+      <div class="field"><label for="maxFps">Кадров в секунду</label>
+        <select id="maxFps" data-k="maxFps" data-num>
+          <option value="0">Без ограничения</option><option value="120">120</option><option value="90">90</option>
+          <option value="60">60</option><option value="30">30</option>
+        </select></div>
+      <div class="field"><label for="codec">Кодек</label>
+        <select id="codec" data-k="videoCodec">
+          <option value="">Авто</option><option value="h264">H.264</option><option value="h265">H.265</option><option value="av1">AV1</option>
+        </select></div>
+      <div class="field"><label for="vbuf">Сглаживание Wi-Fi, мс<small class="note" style="display:block">Буфер видео: меньше рывков, чуть больше задержка</small></label>
+        <input id="vbuf" type="number" min="0" max="500" step="10" data-k="videoBuffer" data-num></div>
+      <div class="field"><label for="abuf">Буфер звука, мс<small class="note" style="display:block">Больше — если звук потрескивает</small></label>
+        <input id="abuf" type="number" min="0" max="1000" step="10" data-k="audioBuffer" data-num></div>
+      <div class="field"><label for="kbm">Клавиатура ПК<small class="note" style="display:block" id="kbmHint"></small></label>
+        <select id="kbm" data-k="keyboardMode">
+          <option value="text">Текст — любой язык</option><option value="uhid">Физическая (UHID)</option><option value="keys">Клавиши</option>
+        </select></div>
+      <div id="kbLayoutRow" hidden><button class="btn link" data-act="kblayout">Настроить раскладку на телефоне →</button></div>
+      <label class="toggle"><input type="checkbox" data-k="powerOffOnClose"><span>Выключать экран телефона при закрытии</span></label>
+      <label class="toggle"><input type="checkbox" data-k="audioDup"><span>Звук и на телефоне тоже (экспериментально)<small>Звук играет и на ПК, и на телефоне (Android 13+). Работает не на всех телефонах и не во всех приложениях — если звука нет, выключите.</small></span></label>
+      <label class="toggle"><input type="checkbox" data-k="cameraMic"><span>Звук с микрофона телефона для камеры</span></label>
+      <label class="toggle"><input type="checkbox" data-k="launchAfterPair"><span>Запускать после нового сопряжения</span></label>
+      <h3>Куда сохранять</h3>
+      <div class="savedir">
+        <label for="shotDir" class="note">Скриншоты</label>
+        <div class="dirrow"><input id="shotDir" class="text" data-k="shotDir" placeholder="Папка по умолчанию" spellcheck="false">
+          <button class="btn" data-act="openfolder" data-folder="shots" title="Открыть папку">Открыть</button></div>
+        <small class="note" id="shotDirHint"></small>
+      </div>
+      <div class="savedir">
+        <label for="videoDir" class="note">Видео</label>
+        <div class="dirrow"><input id="videoDir" class="text" data-k="videoDir" placeholder="Папка по умолчанию" spellcheck="false">
+          <button class="btn" data-act="openfolder" data-folder="videos" title="Открыть папку">Открыть</button></div>
+        <small class="note" id="videoDirHint"></small>
+      </div>
+      <div style="margin-top:10px">
+        <label for="extra" class="note">Свои параметры scrcpy</label>
+        <input id="extra" class="text" data-k="extraArgs" placeholder="например --show-touches --crop=1080:1920:0:0" spellcheck="false">
+      </div>
+    </details>
+  </aside>
+
+  <details class="log" id="logBox">
+    <summary>Журнал</summary>
+    <pre id="log"></pre>
+  </details>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle">
+  <div class="dlg-head">
+    <h2 id="dlgTitle">Подключить телефон</h2>
+    <button class="btn ghost" id="dlgClose" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="qr">QR-код</button>
+    <button role="tab" aria-selected="false" data-tab="code">Код из 6 цифр</button>
+    <button role="tab" aria-selected="false" data-tab="addr">По адресу</button>
+    <button role="tab" aria-selected="false" data-tab="usb">Через кабель</button>
+  </div>
+
+  <section class="pane active" data-pane="qr">
+    <div class="qrwrap">
+      <div class="qr" id="qr"><div class="spin"></div></div>
+      <div>
+        <ol class="steps">
+          <li>Телефон и компьютер должны быть в одной Wi-Fi сети.</li>
+          <li>На телефоне откройте <span class="path">Настройки → Для разработчиков → Отладка по Wi-Fi</span> и включите её.</li>
+          <li>Нажмите <span class="path">«Подключить устройство с помощью QR-кода»</span> и наведите камеру на код слева.</li>
+        </ol>
+        <p class="note">Сопряжение нужно один раз. Потом телефон будет подключаться сам — даже когда меняется порт.</p>
+        <div class="status" id="pairStatus"><div class="spin"></div><span id="pairMsg">Жду телефон…</span></div>
+        <p><button class="btn" id="newQr">Новый код</button></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane" data-pane="code">
+    <div class="form">
+      <p class="note" style="margin:0">На телефоне: <span class="path">Отладка по Wi-Fi → Подключить устройство с помощью кода</span>. Перепишите адрес и код из окна на телефоне.</p>
+      <label>IP-адрес и порт<input class="text" id="pAddr" placeholder="192.168.1.50:41234" spellcheck="false"></label>
+      <label>Код сопряжения<input class="text" id="pCode" inputmode="numeric" placeholder="123456" maxlength="10"></label>
+      <button class="btn primary" id="pairCodeBtn">Выполнить сопряжение</button>
+      <div class="status" id="codeStatus" hidden><div class="spin"></div><span id="codeMsg"></span></div>
+    </div>
+  </section>
+
+  <section class="pane" data-pane="addr">
+    <div class="form">
+      <p class="note" style="margin:0">Если телефон уже сопряжён с этим ПК, хватит адреса. Он показан вверху экрана <span class="path">«Отладка по Wi-Fi»</span>.</p>
+      <label>IP-адрес и порт<input class="text" id="cAddr" placeholder="192.168.1.50:33321" spellcheck="false"></label>
+      <button class="btn primary" id="connectBtn">Подключиться</button>
+      <div class="msg" id="connectMsg"></div>
+    </div>
+  </section>
+
+  <section class="pane" data-pane="usb">
+    <ol class="steps">
+      <li>Включите на телефоне <span class="path">Для разработчиков → Отладка по USB</span>.</li>
+      <li>Подключите кабель и разрешите отладку в окне на телефоне.</li>
+      <li>Телефон появится в списке. Кнопка <span class="path">«Перейти на Wi-Fi»</span> на его карточке отвяжет его от кабеля.</li>
+    </ol>
+    <p class="note">Так можно подключить и старые телефоны на Android 10 и ниже, где нет «Отладки по Wi-Fi».</p>
+  </section>
+</dialog>
+
+<dialog id="appsDlg" aria-labelledby="appsTitle">
+  <div class="dlg-head">
+    <h2 id="appsTitle">Открыть приложение</h2>
+    <button class="btn ghost" id="appsClose" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="apps-body">
+    <p class="note" style="margin:0 0 10px">Приложение откроется в отдельном окне на ПК, а телефон в руке останется свободным. Окно можно растягивать — приложение подстроится.</p>
+    <div class="apps-tools">
+      <input class="text" id="appsSearch" placeholder="Поиск: TikTok, Telegram…" spellcheck="false" autocomplete="off">
+      <label class="toggle small"><input type="checkbox" id="appsSys"><span>Системные</span></label>
+      <button class="btn ghost" id="appsRefresh" title="Заново получить список с телефона">Обновить</button>
+    </div>
+    <div id="appsRecent" class="recent"></div>
+    <div id="appsList" class="apps-list" role="list"></div>
+  </div>
+</dialog>
+
+<dialog id="connDlg" aria-labelledby="connTitle">
+  <div class="dlg-head">
+    <h2 id="connTitle">Проверка связи</h2>
+    <button class="btn ghost" id="connClose" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="apps-body" id="connBody"></div>
+</dialog>
+
+<dialog id="photoDlg" aria-labelledby="photoTitle" class="wide">
+  <div class="dlg-head"><h2 id="photoTitle">Фото с телефона</h2><button class="btn ghost" data-close="photoDlg" aria-label="Закрыть">✕</button></div>
+  <div class="apps-body">
+    <div class="tabs flat" id="photoTabs">
+      <button aria-selected="true" data-f="all">Всё</button><button aria-selected="false" data-f="photo">Фото</button>
+      <button aria-selected="false" data-f="video">Видео</button><button aria-selected="false" data-f="screenshot">Скриншоты</button>
+    </div>
+    <div class="ptools"><button class="btn ghost" id="photoAll">Выбрать все</button><span class="note" id="photoInfo"></span>
+      <button class="btn primary" id="photoPull" disabled>Забрать на ПК</button></div>
+    <div class="pgrid" id="photoGrid"></div>
+    <div class="upd-bar" id="pullBar" hidden><span></span></div>
+  </div>
+</dialog>
+
+<dialog id="galDlg" aria-labelledby="galTitle" class="wide">
+  <div class="dlg-head"><h2 id="galTitle">Галерея</h2><button class="btn ghost" data-close="galDlg" aria-label="Закрыть">✕</button></div>
+  <div class="apps-body">
+    <div class="tabs flat" id="galTabs">
+      <button aria-selected="true" data-f="all">Всё</button><button aria-selected="false" data-f="shot">Скриншоты</button>
+      <button aria-selected="false" data-f="video">Записи экрана</button><button aria-selected="false" data-f="phone">С телефона</button>
+    </div>
+    <div class="galwrap">
+      <div class="pgrid" id="galGrid"></div>
+      <div class="viewer" id="galView" hidden>
+        <div class="vmedia" id="galMedia"></div>
+        <div class="vname" id="galName"></div>
+        <div class="vbtns">
+          <button class="btn primary" data-gal="copy" title="Потом Ctrl+V в Telegram или Discord">Копировать файл</button>
+          <button class="btn" data-gal="open">Открыть</button>
+          <button class="btn" data-gal="reveal">Показать в папке</button>
+          <button class="btn danger" data-gal="delete">В корзину</button>
+        </div>
+        <small class="note">«Копировать файл», затем Ctrl+V в Telegram или Discord. Плитку можно и перетащить на рабочий стол.</small>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+async function api(path, body){
+  const r = await fetch(path, {method: body===undefined ? 'GET' : 'POST',
+    headers: {'X-Token': TOKEN, 'Content-Type': 'application/json'},
+    body: body===undefined ? undefined : JSON.stringify(body)});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+let toastT;
+function toast(msg, path){
+  sticky = false;
+  const t=$('#toast'); t.textContent=msg;
+  if (path){
+    const o=document.createElement('button'); o.textContent='Открыть'; o.onclick=()=>api('/api/open',{path});
+    const f=document.createElement('button'); f.textContent='Показать в папке'; f.onclick=()=>api('/api/open',{path, reveal:true});
+    t.append(o,f);
+  }
+  showToastEl(t); clearTimeout(toastT); toastT=setTimeout(()=>hideToastEl(t), path ? 7000 : 3500);
+}
+function showToastEl(t){
+  const was = t.classList.contains('show') && !t.classList.contains('hide');
+  if (!was) sfx.play('pop');
+  t.classList.remove('hide');
+  if (!was){ t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); }
+}
+function hideToastEl(t){ t.classList.add('hide'); setTimeout(() => { if (t.classList.contains('hide')) t.classList.remove('show','hide'); }, 230); }
+const clock = sec => { sec=Math.max(0,Math.floor(sec)); const m=Math.floor(sec/60), s=sec%60; return (m>59? Math.floor(m/60)+':'+String(m%60).padStart(2,'0') : m) + ':' + String(s).padStart(2,'0'); };
+let lastEvent = null, camMenu = '';
+let sticky = false;
+function toastSticky(msg){ const t=$('#toast'); t.textContent=msg; showToastEl(t); clearTimeout(toastT); sticky = true; }
+
+function uploadOne(serial, file, idx, total){
+  return new Promise(resolve => {
+    const x = new XMLHttpRequest();
+    const label = (total > 1 ? `(${idx}/${total}) ` : '') + file.name;
+    x.open('POST', '/api/push?serial=' + encodeURIComponent(serial) + '&name=' + encodeURIComponent(file.name));
+    x.setRequestHeader('X-Token', TOKEN);
+    x.upload.onprogress = e => { if (e.lengthComputable) toastSticky(`Загружаю ${label} — ${Math.round(e.loaded/e.total*100)}%`); };
+    x.upload.onload = () => toastSticky(/\.apk$/i.test(file.name) ? `Устанавливаю ${label}… Подтвердите на телефоне, если спросит` : `Записываю ${label} на телефон…`);
+    x.onload = () => { let r; try{ r = JSON.parse(x.responseText); }catch(e){ r = {ok:false, error:'HTTP ' + x.status}; } resolve(r); };
+    x.onerror = () => resolve({ok:false, error:'связь с программой прервалась'});
+    x.send(file);
+  });
+}
+async function sendFiles(serial, files){
+  files = [...files]; if (!files.length) return;
+  let ok = 0, last = '';
+  for (let i = 0; i < files.length; i++){
+    const r = await uploadOne(serial, files[i], i+1, files.length);
+    if (r.ok){ ok++; last = r.message; } else { sticky = false; toast(files[i].name + ': ' + r.error); await new Promise(z=>setTimeout(z,2500)); }
+  }
+  sticky = false;
+  if (ok) toast(files.length > 1 ? `Отправлено файлов: ${ok} из ${files.length}` : last);
+}
+const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true; picker.hidden = true;
+document.body.append(picker);
+picker.onchange = () => { sendFiles(picker.dataset.serial, picker.files); picker.value = ''; };
+
+// Drag & drop files onto a phone card.
+addEventListener('dragover', e => { e.preventDefault(); const c = e.target.closest?.('[data-drop]');
+  $$('.phone.drop').forEach(x => x !== c && x.classList.remove('drop')); if (c) c.classList.add('drop'); e.dataTransfer.dropEffect='copy'; });
+addEventListener('dragleave', e => { if (!e.relatedTarget) $$('.phone.drop').forEach(x => x.classList.remove('drop')); });
+addEventListener('drop', e => { e.preventDefault(); $$('.phone.drop').forEach(x => x.classList.remove('drop'));
+  const c = e.target.closest?.('[data-drop]'); if (c && e.dataTransfer.files.length) return sendFiles(c.dataset.drop, e.dataTransfer.files);
+  const f = e.dataTransfer.files[0]; if (!c && f && /\.zip$/i.test(f.name)) selfUpdate(f); });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let state = null, logLen = 0, settings = null, editingUntil = 0;
+
+
+function transportLabel(t){
+  return t==='usb' ? 'По кабелю' : t==='usb+wifi' ? 'Кабель и Wi-Fi' : 'По Wi-Fi';
+}
+
+// ---- sounds, synthesized on the fly (no audio files)
+const sfx = (() => {
+  let ctx = null, enabled = true, noiseBuf = null;
+  const ensure = () => {
+    if (!ctx){ try{ ctx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; } }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  };
+  addEventListener('pointerdown', ensure, {capture: true});
+  addEventListener('keydown', ensure, {capture: true});
+  const noise = c => {
+    if (!noiseBuf){ noiseBuf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const n = c.createBufferSource(); n.buffer = noiseBuf; n.loop = true; return n;
+  };
+  const out = c => { const g = c.createGain(); g.gain.value = 0.55; g.connect(c.destination); return g; };
+  const env = (c, g, t, a, hold, rel, peak) => {
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.setValueAtTime(peak, t + a + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + a + hold + rel);
+  };
+  const tone = (c, dest, type, f0, f1, t, dur, peak) => {
+    const o = c.createOscillator(), g = c.createGain(); o.type = type;
+    o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    env(c, g, t, 0.005, 0, dur, peak); o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
+  };
+  const S = {
+    hiss(c, d = 0.4, vol = 0.22){ const t = c.currentTime, n = noise(c), f = c.createBiquadFilter(), g = c.createGain();
+      f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 0.6; env(c, g, t, 0.02, d * 0.5, d * 0.5, vol);
+      n.connect(f); f.connect(g); g.connect(out(c)); n.start(t, Math.random()); n.stop(t + d + 0.1); },
+    whoosh(c, up = true, d = 0.75){ const t = c.currentTime, n = noise(c), f = c.createBiquadFilter(), g = c.createGain();
+      f.type = 'bandpass'; f.Q.value = 1.4;
+      f.frequency.setValueAtTime(up ? 250 : 5000, t); f.frequency.exponentialRampToValueAtTime(up ? 5000 : 250, t + d);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + d * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      n.connect(f); f.connect(g); g.connect(out(c)); n.start(t); n.stop(t + d + 0.05); },
+    chime(c){ const t = c.currentTime, o = out(c);
+      [[1318.5, 0], [1975.5, 0.045], [2637, 0.09], [3951, 0.13]].forEach(([f, dt], i) => {
+        tone(c, o, 'sine', f, f, t + dt, 0.9 - i * 0.12, 0.16 - i * 0.025);
+        tone(c, o, 'triangle', f * 2, f * 2, t + dt, 0.25, 0.03); }); },
+    crt(c){ const t = c.currentTime, o = out(c);
+      const n = noise(c), hp = c.createBiquadFilter(), g = c.createGain(); hp.type = 'highpass'; hp.frequency.value = 2000;
+      env(c, g, t, 0.001, 0.008, 0.03, 0.22); n.connect(hp); hp.connect(g); g.connect(o); n.start(t); n.stop(t + 0.06);
+      tone(c, o, 'sine', 110, 38, t, 0.32, 0.26);
+      tone(c, o, 'sine', 9500, 9500, t + 0.03, 0.7, 0.018); },
+    thump(c){ const t = c.currentTime, o = out(c); tone(c, o, 'sine', 140, 45, t, 0.28, 0.4); tone(c, o, 'square', 70, 40, t, 0.12, 0.05); },
+    tick(c){ const t = c.currentTime; tone(c, out(c), 'square', 1400, 1100, t, 0.035, 0.05); },
+    pop(c){ const t = c.currentTime; tone(c, out(c), 'sine', 520, 980, t, 0.09, 0.12); },
+    lost(c){ S.hiss(c, 0.9, 0.26); const t = c.currentTime; tone(c, out(c), 'sawtooth', 62, 55, t, 0.7, 0.05); },
+  };
+  return {
+    // renders a sound offline and returns its peak level (used by self-tests)
+    async render(name){ const c = new OfflineAudioContext(1, 44100 * 1.5, 44100); noiseBuf = null; S[name](c); const b = await c.startRendering(); noiseBuf = null; return Array.from(b.getChannelData(0)); },
+    async peak(name){
+      const c = new OfflineAudioContext(1, 44100 * 1.5, 44100); noiseBuf = null;
+      S[name](c); const buf = await c.startRendering(); noiseBuf = null;
+      let m = 0; for (const v of buf.getChannelData(0)) m = Math.max(m, Math.abs(v)); return m;
+    },
+    enable(v){ enabled = v; },
+    play(name, ...args){
+      if (!enabled) return;
+      if (state && state.caps && state.caps.sfx){
+        // Played by the program itself (works without clicking here first, and also
+        // from the phone window). Connect/lost sounds are already played natively.
+        if (name === 'crt' || name === 'lost') return;
+        const n = name === 'whoosh' ? (args[0] === false ? 'whoosh_down' : 'whoosh_up') : name;
+        fetch('/api/sfx', {method: 'POST', headers: {'X-Token': TOKEN, 'Content-Type': 'application/json'}, body: JSON.stringify({name: n})}).catch(() => {});
+        return;
+      }
+      if (document.hidden) return;
+      const c = ensure(); if (!c || c.state !== 'running') return;
+      try{ S[name](c, ...args); }catch(e){}
+    }
+  };
+})();
+
+// ---- live thumbnails of the phone screen on the cards
+const thumbURL = {}, thumbAspect = {};
+function applyThumbs(){
+  for (const img of document.querySelectorAll('img[data-thumb]')){
+    const u = thumbURL[img.dataset.thumb];
+    if (u && img.src !== u) img.src = u;
+    img.parentElement.classList.toggle('has', !!u);
+  }
+}
+let thumbBusy = false;
+async function thumbTick(){
+  if (thumbBusy || document.hidden || diving || !state) return;
+  thumbBusy = true;
+  try{
+    for (const d of state.devices.filter(x => x.state === 'device' && !x.running)){
+      const r = await fetch('/api/thumb?serial=' + encodeURIComponent(d.serial), {headers: {'X-Token': TOKEN}});
+      if (r.status === 200){
+        const sz = (r.headers.get('X-Screen-Size') || '').split('x').map(Number);
+        if (sz[0] > 0 && sz[1] > 0) thumbAspect[d.serial] = sz[0] / sz[1];
+        const u = URL.createObjectURL(await r.blob());
+        if (thumbURL[d.serial]) setTimeout(((old) => () => URL.revokeObjectURL(old))(thumbURL[d.serial]), 2000);
+        thumbURL[d.serial] = u;
+      } else if (r.status === 204){ delete thumbURL[d.serial]; }
+    }
+    applyThumbs();
+  }catch(e){}
+  thumbBusy = false;
+}
+setInterval(thumbTick, 4000);
+setTimeout(thumbTick, 1200);
+
+// ---- "dive into the TV": the app goes fullscreen, the card's screen (with the real
+// phone picture) flies to the middle and becomes the phone; the real scrcpy window is
+// placed exactly on that spot, so after the flash it's simply there.
+let diving = false;
+const nap = ms => new Promise(r => setTimeout(r, ms));
+async function diveIntoTV(btn, serial, fullscreenMode){
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (diving || reduce || !btn.closest('.phone')){
+    const r = await api('/api/launch', fullscreenMode ? {serial, fullscreen: true} : {serial}); if (!r.ok) toast(r.error); return;
+  }
+  diving = true;
+  const dev = state.devices.find(d => d.serial === serial) || {};
+  // 1) whole monitor for the dive
+  let fs = false;
+  try{
+    const resized = new Promise(r => { addEventListener('resize', r, {once: true}); setTimeout(r, 700); });
+    await document.documentElement.requestFullscreen({navigationUI: 'hide'}); fs = true; await resized; await nap(60);
+  }catch(e){}
+  const card = document.querySelector(`.phone[data-drop="${CSS.escape(serial)}"]`) || btn.closest('.phone');
+  const R = card.querySelector('.screen').getBoundingClientRect();
+  const vw = innerWidth, vh = innerHeight;
+  const aspect = thumbAspect[serial] || 9 / 20;
+  let T;
+  if (fullscreenMode) T = {x: 0, y: 0, w: vw, h: vh};
+  else {
+    let h = vh * 0.88, w = h * aspect;
+    if (w > vw * 0.9){ w = vw * 0.9; h = w / aspect; }
+    T = {x: (vw - w) / 2, y: (vh - h) / 2, w, h};
+  }
+  const thumb = thumbURL[serial];
+  const ov = document.createElement('div'); ov.className = 'dive';
+  ov.innerHTML = `<div class="dive-shade"></div><div class="dive-tunnel"></div>
+    <div class="dive-tv${thumb ? ' img' : ''}" style="left:${R.left}px;top:${R.top}px;width:${R.width}px;height:${R.height}px;${thumb ? `background-image:url(${thumb})` : ''}">
+      <i class="rip"></i><i class="rip"></i><i class="rip"></i><i class="rip"></i><b class="scan"></b>${thumb ? '' : `<div class="nm">${esc(dev.name || '')}</div>`}</div>
+    <div class="dive-text">Вход в телефон<small>${esc(dev.name || '')}</small></div><div class="dive-flash"></div>`;
+  document.body.append(ov);
+  const tv = ov.querySelector('.dive-tv'), txt = ov.querySelector('.dive-text');
+  const above = T.y > 90;
+  txt.style.top = (above ? T.y - 46 : T.y + T.h - 60) + 'px';
+  requestAnimationFrame(() => ov.classList.add('go'));
+  sfx.play('hiss', 0.45, 0.14);
+  // 2) the surface ripples
+  await tv.animate([{transform:'none'},{transform:'translate(-3px,2px) rotate(-1deg)'},{transform:'translate(3px,-2px) rotate(1deg)'},{transform:'none'}],
+    {duration: 480, easing: 'steps(6)'}).finished;
+  // start scrcpy now; its window is held back until the flight lands
+  const ZOOM = 700, HOLD = 260;
+  const body = {serial, revealMs: ZOOM + HOLD};
+  if (fullscreenMode) body.fullscreen = true;
+  else if (fs) body.place = {X: T.x / vw, Y: T.y / vh, W: T.w / vw, H: T.h / vh};
+  let res = null; const launched = api('/api/launch', body).then(r => res = r);
+  // 3) fly into the screen: it swings to the middle and grows into the phone
+  sfx.play('whoosh', true, ZOOM / 1000 + 0.1);
+  setTimeout(() => ov.classList.add('inside'), ZOOM * 0.55);
+  await tv.animate([
+    {left: R.left + 'px', top: R.top + 'px', width: R.width + 'px', height: R.height + 'px', transform: 'rotate(0)'},
+    {left: (R.left + T.x) / 2 - 40 + 'px', top: (R.top + T.y) / 2 + 'px', width: (R.width + T.w) / 2 + 'px', height: (R.height + T.h) / 2 + 'px', transform: 'rotate(-6deg)', offset: .5},
+    {left: T.x + 'px', top: T.y + 'px', width: T.w + 'px', height: T.h + 'px', transform: 'rotate(0)'}
+  ], {duration: ZOOM, easing: 'cubic-bezier(.65,0,.25,1)', fill: 'forwards'}).finished;
+  ov.classList.add('landed');
+  // 4) wait until the real window is up (it lands exactly on top of this rect)
+  const t0 = Date.now(); let ok = false;
+  while (Date.now() - t0 < 9000){
+    await nap(120);
+    if (res && !res.ok) break;
+    try{
+      const st = await api('/api/state?log=' + logLen);
+      const d = st.devices.find(x => x.serial === serial || x.id === dev.id);
+      if (d && d.shown){ ok = true; break; }
+    }catch(e){}
+  }
+  // 5) flash and back to normal; the phone window stays in front
+  sfx.play('chime');
+  ov.classList.add('out');
+  await nap(ok ? 240 : 380);
+  if (fs && document.fullscreenElement) { try{ await document.exitFullscreen(); }catch(e){} }
+  ov.classList.add('fade');
+  await nap(320);
+  ov.remove(); diving = false;
+  if (res && !res.ok) toast(res.error);
+  else if (!ok) toast('Окно телефона открывается дольше обычного…');
+}
+
+// ---- "out of the TV": scrcpy was closed → you get spat back into the card
+async function spitOut(serial){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden || diving) return;
+  const card = document.querySelector(`.phone[data-drop="${CSS.escape(serial)}"]`); if (!card) return;
+  diving = true;
+  const R = card.querySelector('.screen').getBoundingClientRect();
+  const vw = innerWidth, vh = innerHeight, aspect = thumbAspect[serial] || 9 / 20;
+  let h = vh * 0.82, w = h * aspect; if (w > vw * 0.8){ w = vw * 0.8; h = w / aspect; }
+  const T = {x: (vw - w) / 2, y: (vh - h) / 2, w, h};
+  const thumb = thumbURL[serial];
+  const ov = document.createElement('div'); ov.className = 'dive go inside exit';
+  ov.innerHTML = `<div class="dive-shade"></div><div class="dive-tunnel"></div>
+    <div class="dive-tv${thumb ? ' img' : ''}" style="left:${T.x}px;top:${T.y}px;width:${T.w}px;height:${T.h}px;${thumb ? `background-image:url(${thumb})` : ''}"><b class="scan"></b></div>
+    <div class="dive-flash"></div>`;
+  document.body.append(ov);
+  const tv = ov.querySelector('.dive-tv');
+  sfx.play('whoosh', false, 0.7);
+  await nap(140);
+  setTimeout(() => ov.classList.remove('inside'), 300);
+  await tv.animate([
+    {left: T.x + 'px', top: T.y + 'px', width: T.w + 'px', height: T.h + 'px', transform: 'rotate(0)', opacity: 1},
+    {left: (R.left + T.x) / 2 + 40 + 'px', top: (R.top + T.y) / 2 + 'px', width: (R.width + T.w) / 2 + 'px', height: (R.height + T.h) / 2 + 'px', transform: 'rotate(7deg)', offset: .55},
+    {left: R.left + 'px', top: R.top + 'px', width: R.width + 'px', height: R.height + 'px', transform: 'rotate(0)', opacity: .9}
+  ], {duration: 620, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards'}).finished;
+  ov.classList.add('out'); sfx.play('thump');
+  card.classList.add('fx-shake'); setTimeout(() => card.classList.remove('fx-shake'), 500);
+  await nap(200);
+  ov.classList.add('fade'); await nap(320);
+  ov.remove(); diving = false;
+  thumbTick();
+}
+
+// TV transitions: CRT on, channel switch, CRT off — only when a phone's state changes.
+const tvPrev = {};
+function tvFx(box){
+  for (const el of box.querySelectorAll('[data-key]')){
+    const k = el.dataset.key, st = el.dataset.st, was = tvPrev[k];
+    if (was && was !== st){
+      if (was === 'live' && st === 'on' && !diving){
+        // not a quick restart (recording / profile / sound switch)? then you've left the TV
+        const serial = el.dataset.drop;
+        setTimeout(() => { const d = state && state.devices.find(x => x.serial === serial); if (d && !d.running) spitOut(serial); }, 1300);
+        tvPrev[k] = st; continue;
+      }
+      const fx = st === 'live' ? 'fx-live' : st === 'on' ? (was === 'off' ? 'fx-on' : '') : 'fx-off';
+      if (fx){ el.classList.add(fx); setTimeout(() => { el.classList.remove(fx); if (state) renderPhones(); }, 700); }
+      if (fx === 'fx-on') sfx.play('crt');
+      if (fx === 'fx-live' && !diving) sfx.play('hiss', 0.35, 0.12);
+      if (fx === 'fx-off'){
+        // phone dropped off the network: "signal lost"
+        el.classList.add('fx-lost'); sfx.play('lost');
+        setTimeout(() => el.classList.remove('fx-lost'), 3600);
+      }
+    }
+    tvPrev[k] = st;
+  }
+}
+
+// Keyed update: only changed cards are replaced, and a card mid-effect is left alone,
+// so TV animations aren't cut off by battery/status refreshes.
+function patchCards(box, html){
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  const fresh = [...tpl.content.children];
+  const old = new Map();
+  [...box.children].forEach((el, i) => old.set(el.dataset.pk, el));
+  const busy = el => el.classList.contains('fx-on') || el.classList.contains('fx-live') || el.classList.contains('fx-off');
+  const nodes = fresh.map((el, i) => {
+    const key = el.dataset.key || (el.classList.contains('empty') ? 'add' : 'x' + i);
+    el.dataset.pk = key; el.dataset.h = el.outerHTML;
+    const prev = old.get(key);
+    if (prev && (prev.dataset.h === el.dataset.h || busy(prev))) return prev;
+    return el;
+  });
+  const keep = new Set(nodes);
+  [...box.children].forEach(el => { if (!keep.has(el)) el.remove(); });
+  nodes.forEach((n, i) => { if (box.children[i] !== n) box.insertBefore(n, box.children[i] || null); });
+  tvFx(box);
+  applyThumbs();
+}
+
+function renderPhones(){
+  const box = $('#phones');
+  const online = state.devices.filter(d => d.state === 'device');
+  const other = state.devices.filter(d => d.state !== 'device');
+  const onlineIds = new Set(online.map(d => d.id.toLowerCase()));
+  const offlineKnown = state.known.filter(k => !onlineIds.has(k.id.toLowerCase()));
+  let html = '';
+
+  for (const d of online){
+    const live = d.running;
+    const usbOnly = d.transport === 'usb';
+    const rec = d.recording;
+    const cam = d.camera;
+    const audioNote = d.audioNote ? `<br><span class="anote">🔇 ${esc(d.audioNote)}</span>` : '';
+    let howText = rec ? `<span class="recdot" aria-hidden="true"></span>Идёт запись · ${clock(Date.now()/1000 - d.recordSince)}`
+      : live ? 'Экран транслируется' + (d.fps > 0 ? ` · <b class="fps ${d.fps >= 45 ? 'hi' : d.fps >= 25 ? '' : 'lo'}">${d.fps} к/с</b>` : '') : transportLabel(d.transport) + (d.addr ? ' · ' + esc(d.addr) : '');
+    if (cam) howText += (live ? '<br>' : '<br>') + (cam === 'front' ? 'Передняя камера открыта' : 'Задняя камера открыта');
+    const camRow = camMenu === d.serial && !cam
+      ? `<div class="row"><button class="btn" data-act="cam" data-facing="back" data-serial="${esc(d.serial)}">Задняя</button>
+           <button class="btn" data-act="cam" data-facing="front" data-serial="${esc(d.serial)}">Передняя</button>
+           <button class="btn ghost narrow" data-act="cammenu" data-serial="" aria-label="Отмена">✕</button></div>`
+      : `<div class="row"><button class="btn" data-act="send" data-serial="${esc(d.serial)}" title="Фото, видео, музыка — в «Загрузки» на телефоне. APK установится">Отправить</button>
+           ${cam ? `<button class="btn on-cam" data-act="camoff" data-id="${esc(d.id)}">Стоп камера</button>`
+                 : `<button class="btn" data-act="cammenu" data-serial="${esc(d.serial)}" title="Камера телефона в отдельном окне (Android 12+)">Камера</button>`}</div>`;
+    const call = d.call;
+    const callBox = !call ? '' : call.state === 'ringing'
+      ? `<div class="callbox"><span class="cb-tag">Звонит</span><b>${esc(call.name)}</b>
+           <div class="cb-btns"><button class="btn cb-yes" data-act="call" data-call="answer" data-serial="${esc(d.serial)}">Ответить</button>
+           <button class="btn cb-no" data-act="call" data-call="decline" data-serial="${esc(d.serial)}">Сбросить</button></div>
+           <small>Говорить — в телефон: звук звонка на ПК не передаётся</small></div>`
+      : `<div class="callbox talk"><span class="cb-tag">Разговор · ${clock(Date.now()/1000 - call.since)}</span><b>${esc(call.name)}</b>
+           <div class="cb-btns"><button class="btn cb-no" data-act="call" data-call="hangup" data-serial="${esc(d.serial)}">Завершить</button></div></div>`;
+    html += `<article class="phone ${live?'live':'on'}${rec?' rec':''}${call && call.state === 'ringing' ? ' ringing' : ''}" data-drop="${esc(d.serial)}" data-key="${esc(d.id.toLowerCase())}" data-st="${live?'live':'on'}">
+      <div class="screen">${!live ? `<img class="thumb" data-thumb="${esc(d.serial)}" alt=""><i class="tgrad"></i>` : ''}${d.battery >= 0 ? `<span class="bat${d.battery <= 15 && !d.charging ? ' low' : ''}" title="Заряд телефона">${d.charging ? '⚡' : ''}${d.battery}%</span>` : ''}<div class="name">${esc(d.name)}</div>
+        <div class="how">${howText}${audioNote}</div>${callBox}</div>
+      <div class="actions">
+        ${live
+          ? `<button class="btn primary" data-act="stop" data-id="${esc(d.id)}">Остановить</button>`
+          : `<button class="btn primary" data-act="launch" data-serial="${esc(d.serial)}">Показать экран</button>
+             <div class="row"><button class="btn" data-act="full" data-serial="${esc(d.serial)}" title="Открыть во весь экран">Во весь экран</button></div>`}
+        <div class="row">
+          <button class="btn" data-act="shot" data-serial="${esc(d.serial)}" title="Сохранить снимок экрана телефона на ПК">Скриншот</button>
+          ${rec ? `<button class="btn recbtn on" data-act="recoff" data-serial="${esc(d.serial)}" title="Остановить запись и сохранить видео">Стоп запись</button>`
+                : `<button class="btn recbtn" data-act="recon" data-serial="${esc(d.serial)}" title="${live ? 'Окно перезапустится на секунду и начнётся запись' : 'Откроет экран телефона и начнёт запись'}">Записать</button>`}
+        </div>
+        ${camRow}
+        <div class="row"><button class="btn" data-act="apps" data-serial="${esc(d.serial)}" title="Приложение откроется в своём окне на ПК, телефон останется свободным">Открыть приложение</button></div>
+        <div class="row"><button class="btn" data-act="photos" data-serial="${esc(d.serial)}" title="Последние фото и видео с телефона — выбрать и забрать на ПК">Фото с телефона</button></div>
+        <div class="remote" role="group" aria-label="Пульт телефона">
+          ${[['back','◁','Назад'],['home','○','Домой'],['recents','▢','Недавние'],['vol_down','🔉','Громкость −'],['vol_up','🔊','Громкость +'],['mute','🔇','Без звука'],['bright_down','🔅','Темнее'],['bright_up','🔆','Ярче'],
+             ['dnd','🌙','Не беспокоить',d.dnd],['torch','🔦','Фонарик',d.torch],['rotate','⟳','Повернуть экран'],['lock','🔒','Заблокировать телефон']]
+            .map(([a,i,t,on]) => `<button class="rb${on ? ' on' : ''}" data-act="remote" data-r="${a}" data-serial="${esc(d.serial)}" title="${t}" aria-label="${t}" aria-pressed="${!!on}">${i}</button>`).join('')}
+        </div>
+        <button class="btn ghost linkline" data-act="conntest" data-serial="${esc(d.serial)}" title="Проверить Wi-Fi и подобрать настройки">📶 ${d.link ? esc(d.link) : 'Проверить связь'}</button>
+        ${(d.apps||[]).length ? `<div class="chips">${d.apps.map(x => `<span class="chip">${esc(x.label)}<button data-act="appclose" data-id="${esc(x.key)}" aria-label="Закрыть ${esc(x.label)}">✕</button></span>`).join('')}</div>` : ''}
+        <div class="row">
+          ${usbOnly ? `<button class="btn" data-act="tcpip" data-serial="${esc(d.serial)}" title="Подключить по Wi-Fi и можно отключить кабель">Перейти на Wi-Fi</button>`
+                    : (d.transport==='wifi' ? `<button class="btn ghost" data-act="disconnect" data-serial="${esc(d.serial)}">Отключить</button>` : '')}
+        </div>
+      </div></article>`;
+  }
+  for (const d of other){
+    const unauthorized = d.state === 'unauthorized';
+    html += `<article class="phone off">
+      <div class="screen"><div class="name">${esc(d.name)}</div><div class="how">${unauthorized ? 'Ждёт разрешения' : esc(d.state)}</div></div>
+      <div class="hint">${unauthorized ? 'Разрешите отладку в окне на экране телефона.' : 'Телефон не отвечает.'}</div></article>`;
+  }
+  for (const k of offlineKnown){
+    html += `<article class="phone off" data-key="${esc(k.id.toLowerCase())}" data-st="off">
+      <div class="screen"><div class="name">${esc(k.name || k.id)}</div><div class="how">Не в сети</div></div>
+      <div class="hint">Включите на телефоне «Отладку по Wi-Fi», и он подключится сам.${k.ip ? ' Последний адрес: ' + esc(k.ip) : ''}</div>
+      <div class="more"><button class="btn ghost" data-act="forget" data-id="${esc(k.id)}">Забыть</button></div></article>`;
+  }
+  html += `<button class="empty" data-act="add"><span class="plus">+</span>
+    <span>${online.length || offlineKnown.length ? 'Ещё один телефон' : 'Подключите телефон — достаточно отсканировать QR-код'}</span></button>`;
+  if (box.dataset.html !== html){ box.dataset.html = html; patchCards(box, html); }
+
+  const n = online.length;
+  $('#sub').textContent = state.adbError ? 'adb не запустился'
+    : n ? (n === 1 ? 'Подключён 1 телефон' : `Подключено телефонов: ${n}`)
+    : offlineKnown.length ? 'Жду, когда телефон включит отладку по Wi-Fi…' : 'Телефонов пока нет';
+}
+
+function renderSettings(force){
+  if (!force && Date.now() < editingUntil) return;
+  settings = {...state.settings};
+  sfx.enable(settings.uiSounds !== false);
+  for (const el of $$('[data-k]')){
+    const k = el.dataset.k, v = settings[k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (document.activeElement !== el) el.value = v ?? '';
+  }
+  renderProfiles();
+  const km = settings.keyboardMode || 'text';
+  $('#kbmHint').textContent = {text: 'Пишите по-русски как обычно. Для игр с WASD лучше «Физическая».',
+    uhid: 'Для игр. Русский: добавьте раскладку на телефоне и переключайте Ctrl+Пробел.',
+    keys: 'Только латиница и служебные клавиши.'}[km];
+  $('#kbLayoutRow').hidden = km !== 'uhid';
+}
+
+function renderProfiles(){
+  const box = $('#profiles'), cur = state.profile;
+  const html = (state.profiles || []).map(p => `<div class="prof"><button data-act="profile" data-name="${esc(p.name)}" aria-pressed="${p.name === cur}">${esc(p.name)}<small>${esc(p.hint || '')}</small></button>${p.builtin ? '' : `<button class="pdel" data-act="pdel" data-name="${esc(p.name)}" aria-label="Удалить профиль ${esc(p.name)}">✕</button>`}</div>`).join('')
+    + (cur ? '' : '<div class="prof"><button aria-pressed="true" disabled>Свои<small>настроено вручную</small></button></div>');
+  if (box.dataset.html !== html){
+    box.innerHTML = html; box.dataset.html = html;
+    if (renderProfiles.last !== undefined && renderProfiles.last !== cur){ const b = box.querySelector('[aria-pressed=true]'); if (b){ b.classList.add('fx-pop'); } }
+  }
+  renderProfiles.last = cur;
+}
+
+async function saveSettings(){
+  editingUntil = Date.now() + 1500;
+  for (const el of $$('[data-k]')){
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') settings[k] = el.checked;
+    else if ('num' in el.dataset) settings[k] = parseInt(el.value, 10) || 0;
+    else settings[k] = el.value;
+  }
+  await api('/api/settings', settings);
+  state.settings = {...settings};
+  renderSettings(true);
+}
+
+function renderLog(lines){
+  if (!lines.length) return;
+  const pre = $('#log');
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+  pre.textContent += lines.join('\n') + '\n';
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function renderPair(){
+  const p = state.pair || {};
+  const st = $('#pairStatus');
+  if (p.qr && $('#qr').dataset.name !== p.name){ $('#qr').innerHTML = p.qr; $('#qr').dataset.name = p.name; }
+  if (p.stage){
+    st.className = 'status ' + p.stage;
+    $('#pairMsg').textContent = p.message || '';
+    const cs = $('#codeStatus');
+    if (!cs.hidden){ cs.className = 'status ' + p.stage; $('#codeMsg').textContent = p.message || ''; }
+  }
+  if (p.stage === 'done' && $('#dlg').open && !$('#dlg').dataset.closing){
+    $('#dlg').dataset.closing = '1';
+    setTimeout(() => { $('#dlg').close(); delete $('#dlg').dataset.closing; toast(p.message); }, 1400);
+  }
+}
+
+function renderApp(s){
+  const caps = s.caps || {}, u = s.update || {};
+  $('#autostartRow').hidden = !caps.autostart;
+  $('#trayRow').hidden = !caps.tray;
+  $('#shortcutRow').hidden = !caps.shortcuts;
+  $('#hkBox').hidden = !caps.autostart;
+  $('#hkErr').textContent = s.hotkeyErr || '';
+  if (document.activeElement !== $('#autostart')) $('#autostart').checked = !!s.autostart;
+  // version line
+  let v = 'scrcpy ' + (u.local || '—');
+  if (u.checking) v += ' · проверяю…';
+  else if (u.error) v += ' · ' + u.error;
+  else if (u.available) v += ' · есть ' + u.latest;
+  else if (u.latest) v += ' · последняя версия';
+  $('#verText').textContent = v;
+  $('#updCheck').disabled = !!u.checking || !!u.installing;
+  // banner
+  const bn = $('#updBanner');
+  bn.hidden = !(u.available || u.installing || (u.error && u.stage));
+  if (u.installing){
+    $('#updText').textContent = u.stage === 'download' ? `Скачиваю scrcpy ${u.latest}… ${u.progress}%` : `Устанавливаю scrcpy ${u.latest}…`;
+    $('#updBar').hidden = false; $('#updBar span').style.width = (u.stage === 'download' ? u.progress : 100) + '%';
+    $('#updActions').hidden = true;
+  } else {
+    $('#updText').textContent = u.error && u.stage ? 'Обновление не удалось: ' + u.error : `Вышла scrcpy ${u.latest}, у вас ${u.local}.`;
+    $('#updBar').hidden = true; $('#updActions').hidden = false;
+  }
+}
+
+// ---- connection test
+async function runConnTest(serial){
+  const dev = state.devices.find(d => d.serial === serial) || {};
+  $('#connTitle').textContent = 'Проверка связи' + (dev.name ? ' — ' + dev.name : '');
+  $('#connBody').innerHTML = '<div class="apps-empty"><div class="spin" style="margin:0 auto 10px"></div>Проверяю Wi-Fi, задержку и скорость… около 5 секунд</div>';
+  if (!$('#connDlg').open) $('#connDlg').showModal();
+  const r = await api('/api/conntest', {serial});
+  if (!r.ok){ $('#connBody').innerHTML = `<div class="apps-empty">${esc(r.error)}</div>`; return; }
+  const c = r.result, cells = [];
+  const cell = (label, val, cls='') => cells.push(`<div class="conn-cell ${cls}"><small>${label}</small><b>${val}</b></div>`);
+  if (c.transport === 'usb') cell('Подключение', 'Кабель USB', 'good');
+  else {
+    if (c.freqMhz) cell('Wi-Fi телефона', c.freqMhz >= 4900 ? '5 ГГц' : '2,4 ГГц', c.freqMhz >= 4900 ? 'good' : 'bad');
+    if (c.linkMbps) cell('Скорость Wi-Fi', c.linkMbps + ' Мбит/с', c.linkMbps >= 150 ? 'good' : c.linkMbps < 72 ? 'bad' : '');
+    if (c.rttMs) cell('Задержка', (c.rttMs < 1 ? '<1' : Math.round(c.rttMs)) + ' мс' + (c.rttMaxMs - c.rttMs > 40 ? ` <small style="display:inline">до ${Math.round(c.rttMaxMs)}</small>` : ''), c.rttMs <= 12 ? 'good' : c.rttMs > 35 ? 'bad' : '');
+    if (c.rssi) cell('Сигнал', c.rssi >= -60 ? 'Отличный' : c.rssi >= -70 ? 'Нормальный' : 'Слабый', c.rssi >= -60 ? 'good' : c.rssi < -70 ? 'bad' : '');
+  }
+  if (c.thruMbps) cell('Реальная скорость', Math.round(c.thruMbps) + ' Мбит/с', c.thruMbps >= 35 ? 'good' : c.thruMbps < 12 ? 'bad' : '');
+  if (c.hevc) cell('H.265 на телефоне', c.hevc === 'yes' ? 'Есть' : 'Нет', c.hevc === 'yes' ? 'good' : '');
+  const cur = state.profile;
+  $('#connBody').innerHTML = `<div class="verdict ${c.quality}"><b>${esc(c.verdict)}</b><br>Подойдёт профиль «${esc(c.profile)}»${c.gamesOk ? ', для игр тоже годится' : ''}.</div>
+    <div class="conn-grid">${cells.join('')}</div>
+    ${c.tips.length ? `<ul class="tips">${c.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${cur === c.profile ? '<p class="note">Этот профиль уже включён.</p>' : `<button class="btn primary" data-act="connapply" data-name="${esc(c.profile)}">Включить «${esc(c.profile)}»</button>`}
+    <button class="btn ghost" data-act="conntest" data-serial="${esc(serial)}">Проверить ещё раз</button>`;
+}
+$('#connClose').onclick = () => $('#connDlg').close();
+
+// ---- apps dialog
+let appsSerial = '', appsData = null, lastUiReq = null;
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+async function openApps(serial, refresh){
+  appsSerial = serial;
+  const dev = state.devices.find(d => d.serial === serial);
+  $('#appsTitle').textContent = 'Открыть приложение' + (dev ? ' — ' + dev.name : '');
+  if (!$('#appsDlg').open) $('#appsDlg').showModal();
+  $('#appsList').innerHTML = '<div class="apps-empty"><div class="spin" style="margin:0 auto 10px"></div>Получаю список приложений с телефона…</div>';
+  $('#appsSearch').value = ''; $('#appsSearch').focus();
+  try{
+    const r = await fetch('/api/apps?serial=' + encodeURIComponent(serial) + (refresh ? '&refresh=1' : ''), {headers:{'X-Token':TOKEN}}).then(x => x.json());
+    if (!r.ok){ appsData = null; $('#appsList').innerHTML = `<div class="apps-empty">${esc(r.error)}</div>`; return; }
+    appsData = r; renderApps();
+  }catch(e){ $('#appsList').innerHTML = `<div class="apps-empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+function renderApps(){
+  if (!appsData) return;
+  const q = $('#appsSearch').value.trim().toLowerCase(), sys = $('#appsSys').checked;
+  const dev = state.devices.find(d => d.serial === appsSerial) || {};
+  const running = new Set((dev.apps || []).map(x => x.pkg));
+  const list = appsData.apps.filter(a => (sys || !a.system || q) && (!q || a.label.toLowerCase().includes(q) || a.pkg.includes(q)));
+  $('#appsRecent').innerHTML = q ? '' : (appsData.recent || []).map(a =>
+    `<button data-pkg="${esc(a.pkg)}" data-label="${esc(a.label)}">${esc(a.label)}</button>`).join('');
+  $('#appsList').innerHTML = list.length ? list.map(a => `<button class="app-row" role="listitem" data-pkg="${esc(a.pkg)}" data-label="${esc(a.label)}">
+      <span class="app-ava" style="background:hsl(${hue(a.pkg)} 45% 42%)">${esc((a.label.trim()[0] || '?').toUpperCase())}</span>
+      <span class="app-name"><b>${esc(a.label)}</b><small>${esc(a.pkg)}</small></span>
+      ${running.has(a.pkg) ? '<span class="app-state">Открыто</span>' : ''}</button>`).join('')
+    : `<div class="apps-empty">${q ? 'Ничего не нашлось' : 'Список пуст'}</div>`;
+}
+async function launchApp(pkg, label){
+  toast('Открываю ' + label + '…');
+  $('#appsDlg').close();
+  const r = await api('/api/app/open', {serial: appsSerial, pkg, label});
+  if (!r.ok) toast(r.error);
+}
+$('#appsSearch').addEventListener('input', renderApps);
+$('#appsSearch').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); const f = $('#appsList .app-row'); if (f) launchApp(f.dataset.pkg, f.dataset.label); } });
+$('#appsSys').addEventListener('change', renderApps);
+$('#appsRefresh').onclick = () => openApps(appsSerial, true);
+$('#appsClose').onclick = () => $('#appsDlg').close();
+for (const box of ['#appsList', '#appsRecent']) $(box).addEventListener('click', e => {
+  const b = e.target.closest('[data-pkg]'); if (b) launchApp(b.dataset.pkg, b.dataset.label);
+});
+
+let failed = 0;
+async function poll(){
+  try{
+    const s = await api('/api/state?log=' + logLen);
+    failed = 0;
+    if (s.logLen < logLen){ $('#log').textContent=''; }
+    state = s; logLen = s.logLen;
+    renderPhones(); renderSettings(); renderLog(s.logs); renderPair();
+    const evs = s.events || [];
+    const maxId = evs.length ? evs[evs.length-1].id : 0;
+    if (lastEvent === null) lastEvent = maxId;
+    for (const ev of evs) if (ev.id > lastEvent) toast(ev.text, ev.path || undefined);
+    lastEvent = Math.max(lastEvent, maxId);
+    $('#shotDirHint').textContent = s.shotDir; $('#videoDirHint').textContent = s.videoDir;
+    const b = $('#banner');
+    if (!s.toolsOk){ b.hidden=false; b.textContent='Не найдены scrcpy.exe и adb.exe. Положите эту программу в папку scrcpy (' + s.toolDir + ').'; }
+    else if (s.adbError){ b.hidden=false; b.textContent=s.adbError; }
+    else b.hidden=true;
+    renderApp(s);
+    $('#appVer').textContent = s.version;
+    renderAppUpd(s);
+    if (lastUiReq === null) lastUiReq = s.uiReq.seq;
+    else if (s.uiReq.seq > lastUiReq){ lastUiReq = s.uiReq.seq; if (s.uiReq.kind === 'apps') openApps(s.uiReq.serial); }
+  }catch(e){
+    console.error(e); if (appUpdateLost()) return; if (++failed > 3){ $('#sub').textContent = 'Программа закрыта. Запустите её заново.'; }
+  }
+  setTimeout(poll, document.hidden ? 3000 : 1000);
+}
+
+// ---- events
+document.addEventListener('click', e => { if (e.target.closest('.btn, .presets button, .tabs button, .app-row, .recent button')) sfx.play('tick'); }, true);
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const act = t.dataset.act;
+  try{
+    if (act === 'add') return openDialog();
+    t.disabled = true;
+    let r;
+    if (act === 'launch' || act === 'full'){ diveIntoTV(t, t.dataset.serial, act === 'full'); return; }
+    if (act === 'stop') r = await api('/api/stop', {id: t.dataset.id});
+    if (act === 'disconnect') r = await api('/api/disconnect', {serial: t.dataset.serial});
+    if (act === 'forget') r = await api('/api/forget', {id: t.dataset.id});
+    if (act === 'profile'){ r = await api('/api/profile/apply', {name: t.dataset.name}); if (r.ok) toast('Профиль «' + t.dataset.name + '»' + (r.restarted ? ' — экран перезапущен с новыми настройками' : '')); }
+    if (act === 'pdel'){ r = await api('/api/profile/delete', {name: t.dataset.name}); }
+    if (act === 'conntest'){ runConnTest(t.dataset.serial); return; }
+    if (act === 'connapply'){ r = await api('/api/profile/apply', {name: t.dataset.name}); if (r.ok){ $('#connDlg').close(); toast('Профиль «' + t.dataset.name + '»' + (r.restarted ? ' — экран перезапущен' : '')); } }
+    if (act === 'apps'){ openApps(t.dataset.serial); return; }
+    if (act === 'appclose') r = await api('/api/stop', {id: t.dataset.id});
+    if (act === 'remote'){
+      r = await api('/api/remote', {serial: t.dataset.serial, action: t.dataset.r});
+      if (r.ok && t.dataset.r === 'dnd') toast(r.state.dnd ? 'На телефоне включено «Не беспокоить»' : '«Не беспокоить» выключено');
+      if (r.ok && t.dataset.r === 'torch') toast(r.state.torch ? 'Фонарик включён' : 'Фонарик выключен');
+      if (r.ok && t.dataset.r === 'lock') toast('Телефон заблокирован');
+    }
+    if (act === 'photos'){ openPhotos(t.dataset.serial); return; }
+    if (act === 'call'){ r = await api('/api/call', {serial: t.dataset.serial, action: t.dataset.call}); }
+    if (act === 'selfupd'){ updPicker.click(); return; }
+    if (act === 'appupdcheck'){ r = await api('/api/appupdate/check', {}); if (!r.ok) toast(r.error); }
+    if (act === 'appupdinstall'){
+      const open = state && state.devices.some(d => d.running || d.camera || (d.apps || []).length);
+      if (open && !confirm('Открытые окна телефона закроются на пару секунд. Обновить сейчас?')) return;
+      r = await api('/api/appupdate/install', {});
+    }
+    if (act === 'updcheck'){ r = await api('/api/update/check', {}); }
+    if (act === 'updnotes'){ r = await api('/api/openurl', {url: (state.update && state.update.pageUrl) || 'https://github.com/Genymobile/scrcpy/releases'}); }
+    if (act === 'updinstall'){
+      const open = state.devices.some(d => d.running || d.camera);
+      if (open && !confirm('Открытые окна scrcpy закроются на время обновления. Продолжить?')) return;
+      r = await api('/api/update/install', {});
+    }
+    if (act === 'shortcut'){ r = await api('/api/shortcut', {where: t.dataset.where}); if (r.ok) toast(t.dataset.where === 'desktop' ? 'Ярлык появился на рабочем столе' : 'Программа добавлена в меню «Пуск»'); }
+    if (act === 'send'){ picker.dataset.serial = t.dataset.serial; picker.click(); return; }
+    if (act === 'cammenu'){ camMenu = t.dataset.serial; renderPhones(); return; }
+    if (act === 'cam'){ camMenu = ''; toast('Открываю камеру…'); r = await api('/api/camera', {serial: t.dataset.serial, facing: t.dataset.facing}); }
+    if (act === 'camoff') r = await api('/api/stop', {id: t.dataset.id + '|cam'});
+    if (act === 'shot'){ r = await api('/api/screenshot', {serial: t.dataset.serial}); if (r.ok) toast('Скриншот сохранён', r.path); }
+    if (act === 'recon'){ toast('Начинаю запись…'); r = await api('/api/record', {serial: t.dataset.serial, on: true}); }
+    if (act === 'recoff'){ toast('Сохраняю видео…'); r = await api('/api/record', {serial: t.dataset.serial, on: false}); }
+    if (act === 'openfolder') r = await api('/api/open', {folder: t.dataset.folder});
+    if (act === 'tcpip'){ toast('Переключаю на Wi-Fi…'); r = await api('/api/tcpip', {serial: t.dataset.serial}); if (r.ok) toast('Готово: ' + r.addr + '. Кабель можно отключить.'); }
+    if (r && !r.ok) toast(r.error);
+  }catch(err){ toast('Ошибка: ' + err.message); }
+  finally{ t.disabled = false; }
+});
+
+for (const el of $$('[data-k]')){
+  el.addEventListener('change', saveSettings);
+  if (el.type === 'number' || el.type === 'text') el.addEventListener('input', () => editingUntil = Date.now() + 3000);
+}
+$('#psaveOpen').onclick = () => { $('#psaveForm').hidden = false; $('#psaveOpen').hidden = true; $('#psaveName').focus(); };
+async function saveProfile(){
+  const r = await api('/api/profile/save', {name: $('#psaveName').value});
+  if (!r.ok) return toast(r.error);
+  toast('Профиль «' + $('#psaveName').value.trim() + '» сохранён');
+  $('#psaveName').value = ''; $('#psaveForm').hidden = true; $('#psaveOpen').hidden = false;
+}
+$('#psaveBtn').onclick = saveProfile;
+$('#psaveName').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); saveProfile(); } if (e.key === 'Escape'){ $('#psaveForm').hidden = true; $('#psaveOpen').hidden = false; } });
+
+// ---- automatic updates from GitHub
+let appUpdInstalling = false, appUpdWaitStarted = false;
+let loadedVersion = null;
+function renderAppUpd(s){
+  // a newer version took over this address (auto-update): reload onto its UI
+  if (loadedVersion === null) loadedVersion = s.version;
+  else if (s.version !== loadedVersion && !appUpdWaitStarted){
+    appUpdWaitStarted = true;
+    try{ sessionStorage.setItem('updatedTo', s.version); }catch(e){}
+    location.reload(); return;
+  }
+  const u = s.appUpdate || {};
+  let t = 'TVPhone ' + s.version;
+  if (u.installing) t += ` · скачиваю ${u.latest}… ${u.progress || 0}%`;
+  else if (u.checking) t += ' · проверяю…';
+  else if (u.available) t += ` · есть ${u.latest}` + (u.waiting ? ' (установится, когда закроете окно телефона)' : '');
+  else if (u.error) t += ' · ' + u.error;
+  else if (u.latest) t += ' · последняя версия';
+  $('#appUpdText').textContent = t;
+  $('#appUpdCheck').disabled = !!(u.checking || u.installing);
+  $('#appUpdRow').hidden = !(u.available && !u.installing);
+  if (u.pageUrl) $('#appUpdNotes').href = u.pageUrl;
+  $('#appUpdNotes').hidden = !u.pageUrl;
+  $('#appUpdBar').hidden = !u.installing;
+  $('#appUpdBar span').style.width = (u.progress || 0) + '%';
+  if (u.installing && !appUpdInstalling) toastSticky(`Скачиваю TVPhone ${u.latest}…`);
+  if (!u.installing && appUpdInstalling && u.error){ sticky = false; toast('Обновление не удалось: ' + u.error); }
+  appUpdInstalling = !!u.installing;
+}
+function appUpdateLost(){
+  // the program went away while installing an update: the new version is starting
+  if (!appUpdInstalling || appUpdWaitStarted) return false;
+  appUpdWaitStarted = true; waitNewVersion(state && state.version); return true;
+}
+
+// ---- self-update from a zip (no more "file in use")
+const updPicker = document.createElement('input'); updPicker.type = 'file'; updPicker.accept = '.zip,.exe'; updPicker.hidden = true;
+document.body.append(updPicker);
+updPicker.onchange = () => { if (updPicker.files[0]) selfUpdate(updPicker.files[0]); updPicker.value = ''; };
+async function selfUpdate(file){
+  const open = state && state.devices.some(d => d.running || d.camera || (d.apps || []).length);
+  if (!confirm(`Установить «${file.name}»?` + (open ? '\nОткрытые окна телефона закроются на пару секунд.' : ''))) return;
+  const oldVer = state && state.version;
+  const r = await new Promise(resolve => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/selfupdate?name=' + encodeURIComponent(file.name));
+    x.setRequestHeader('X-Token', TOKEN);
+    x.upload.onprogress = e => { if (e.lengthComputable) toastSticky(`Загружаю обновление — ${Math.round(e.loaded / e.total * 100)}%`); };
+    x.upload.onload = () => toastSticky('Устанавливаю: закрываю adb и заменяю файлы…');
+    x.onload = () => { try{ resolve(JSON.parse(x.responseText)); }catch(e){ resolve({ok:false, error:'HTTP ' + x.status}); } };
+    x.onerror = () => resolve({ok:false, error:'связь с программой прервалась'});
+    x.send(file);
+  });
+  if (!r.ok){ sticky = false; toast('Обновление не удалось: ' + r.error); return; }
+  waitNewVersion(oldVer);
+}
+// The new version takes over this same address; wait for it and reload.
+async function waitNewVersion(oldVer){
+  toastSticky('Перезапускаю программу…');
+  let sawDown = false;
+  for (let i = 0; i < 60; i++){
+    await new Promise(z => setTimeout(z, 400));
+    try{
+      const p = await fetch('/api/ping', {headers: {'X-Token': TOKEN}}).then(x => x.json());
+      if ((p.version && p.version !== oldVer) || sawDown){
+        try{ sessionStorage.setItem('updatedTo', p.version || ''); }catch(e){}
+        location.reload(); return;
+      }
+    }catch(e){ sawDown = true; }
+  }
+  sticky = false; toast('Новая версия не ответила. Запустите «Телефон на ПК.exe» ещё раз.');
+}
+try{ const v = sessionStorage.getItem('updatedTo'); if (v !== null){ sessionStorage.removeItem('updatedTo'); setTimeout(() => toast('Программа обновлена' + (v ? ' до версии ' + v : '')), 600); } }catch(e){}
+
+// ---- photos from the phone
+let ph = {serial: '', items: [], sel: new Set(), filter: 'all'};
+const fmtSize = n => n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' ГБ' : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ';
+const fmtDate = t => { const d = new Date(t * 1000); return d.toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'}) + ' ' + d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}); };
+const thumbObs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting){ const img = e.target; img.src = img.dataset.src; thumbObs.unobserve(img); } }, {rootMargin: '200px'});
+async function openPhotos(serial){
+  ph = {serial, items: [], sel: new Set(), filter: ph.filter || 'all'};
+  const dev = state.devices.find(d => d.serial === serial) || {};
+  $('#photoTitle').textContent = 'Фото с телефона' + (dev.name ? ' — ' + dev.name : '');
+  $('#photoGrid').innerHTML = '<div class="apps-empty" style="grid-column:1/-1"><div class="spin" style="margin:0 auto 10px"></div>Смотрю, что есть на телефоне…</div>';
+  if (!$('#photoDlg').open) $('#photoDlg').showModal();
+  const r = await fetch('/api/phone/media?serial=' + encodeURIComponent(serial), {headers: {'X-Token': TOKEN}}).then(x => x.json()).catch(e => ({ok: false, error: e.message}));
+  if (!r.ok){ $('#photoGrid').innerHTML = `<div class="apps-empty" style="grid-column:1/-1">${esc(r.error)}</div>`; return; }
+  ph.items = r.items || []; renderPhotos();
+}
+function renderPhotos(){
+  const list = ph.items.filter(x => ph.filter === 'all' || x.kind === ph.filter);
+  $('#photoGrid').innerHTML = list.length ? list.map(x => `<button class="tile${ph.sel.has(x.path) ? ' sel' : ''}" data-p="${esc(x.path)}" title="${esc(x.name)} · ${fmtSize(x.size)}">
+      ${x.kind === 'video' ? '<span class="play">▶</span>' : `<img alt="" data-src="/api/phone/thumb?serial=${encodeURIComponent(ph.serial)}&path=${encodeURIComponent(x.path)}&t=${TOKEN}">`}
+      ${x.local ? '<span class="have">уже на ПК</span>' : ''}<span class="chk"></span><span class="tmeta">${fmtDate(x.date)}</span></button>`).join('')
+    : '<div class="apps-empty" style="grid-column:1/-1">Здесь пусто</div>';
+  $('#photoGrid').querySelectorAll('img[data-src]').forEach(i => thumbObs.observe(i));
+  photoInfo();
+}
+function photoInfo(){
+  const size = ph.items.filter(x => ph.sel.has(x.path)).reduce((a, x) => a + x.size, 0);
+  $('#photoInfo').textContent = ph.sel.size ? `Выбрано: ${ph.sel.size} · ${fmtSize(size)}` : 'Нажмите на фото, чтобы выбрать';
+  $('#photoPull').disabled = !ph.sel.size || (state.pull && state.pull.active);
+  $('#photoPull').textContent = ph.sel.size ? `Забрать на ПК (${ph.sel.size})` : 'Забрать на ПК';
+}
+$('#photoGrid').addEventListener('click', e => {
+  const t = e.target.closest('.tile'); if (!t) return;
+  const p = t.dataset.p; ph.sel.has(p) ? ph.sel.delete(p) : ph.sel.add(p); t.classList.toggle('sel', ph.sel.has(p)); photoInfo();
+});
+$('#photoTabs').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return;
+  ph.filter = b.dataset.f; $$('#photoTabs button').forEach(x => x.setAttribute('aria-selected', String(x === b))); renderPhotos(); });
+$('#photoAll').onclick = () => { const vis = ph.items.filter(x => ph.filter === 'all' || x.kind === ph.filter);
+  const all = vis.every(x => ph.sel.has(x.path)); vis.forEach(x => all ? ph.sel.delete(x.path) : ph.sel.add(x.path)); renderPhotos(); };
+$('#photoPull').onclick = async () => {
+  const r = await api('/api/phone/pull', {serial: ph.serial, paths: [...ph.sel]});
+  if (!r.ok) return toast(r.error);
+  $('#pullBar').hidden = false; $('#photoPull').disabled = true;
+  const iv = setInterval(() => {
+    const p = state.pull || {}; $('#pullBar span').style.width = (p.total ? Math.round(p.done / p.total * 100) : 0) + '%';
+    $('#photoInfo').textContent = p.active ? `Скачиваю ${p.done + 1} из ${p.total}: ${p.current || ''}` : 'Готово';
+    if (!p.active){ clearInterval(iv); $('#pullBar').hidden = true; ph.items.forEach(x => { if (ph.sel.has(x.path)) x.local = true; }); ph.sel.clear(); renderPhotos(); }
+  }, 500);
+};
+for (const b of $$('[data-close]')) b.onclick = () => $('#' + b.dataset.close).close();
+
+// ---- gallery of your screenshots / recordings / phone photos
+let gal = {items: [], filter: 'all', cur: null};
+const galURL = p => '/api/gallery/file?path=' + encodeURIComponent(p) + '&t=' + TOKEN;
+async function openGallery(){
+  if (!$('#galDlg').open) $('#galDlg').showModal();
+  $('#galGrid').innerHTML = '<div class="apps-empty" style="grid-column:1/-1"><div class="spin" style="margin:0 auto 10px"></div></div>';
+  const r = await api('/api/gallery'); gal.items = r.items || []; renderGallery();
+}
+function renderGallery(){
+  const list = gal.items.filter(x => gal.filter === 'all' || x.kind === gal.filter);
+  $('#galGrid').innerHTML = list.length ? list.map(x => {
+    const vid = /\.(mp4|mkv|mov|webm|3gp)$/i.test(x.name);
+    return `<button class="tile${gal.cur === x.path ? ' cur' : ''}" draggable="true" data-p="${esc(x.path)}" data-n="${esc(x.name)}" title="${esc(x.name)}">
+      ${vid ? `<video muted preload="metadata" src="${galURL(x.path)}#t=0.5"></video><span class="play">▶</span>` : `<img alt="" data-src="${galURL(x.path)}">`}
+      <span class="tmeta">${fmtDate(x.date)} · ${fmtSize(x.size)}</span></button>`; }).join('')
+    : `<div class="apps-empty" style="grid-column:1/-1">Пока пусто. Скриншоты, записи и фото с телефона появятся здесь.</div>`;
+  $('#galGrid').querySelectorAll('img[data-src]').forEach(i => thumbObs.observe(i));
+}
+function showInViewer(p){
+  const x = gal.items.find(i => i.path === p); if (!x) return;
+  gal.cur = p; $('.galwrap').classList.add('open'); $('#galView').hidden = false;
+  const vid = /\.(mp4|mkv|mov|webm|3gp)$/i.test(x.name);
+  $('#galMedia').innerHTML = vid ? `<video controls autoplay src="${galURL(p)}"></video>` : `<img alt="" src="${galURL(p)}">`;
+  $('#galName').textContent = x.name + ' · ' + fmtSize(x.size);
+  $$('#galGrid .tile').forEach(t => t.classList.toggle('cur', t.dataset.p === p));
+}
+$('#galBtn').onclick = openGallery;
+$('#galGrid').addEventListener('click', e => { const t = e.target.closest('.tile'); if (t) showInViewer(t.dataset.p); });
+$('#galGrid').addEventListener('dragstart', e => {
+  // drag a tile out to the desktop / a folder (Chromium "DownloadURL")
+  const t = e.target.closest('.tile'); if (!t) return;
+  const x = gal.items.find(i => i.path === t.dataset.p);
+  const mime = /\.png$/i.test(x.name) ? 'image/png' : /\.jpe?g$/i.test(x.name) ? 'image/jpeg' : 'video/mp4';
+  e.dataTransfer.setData('DownloadURL', `${mime}:${x.name}:${location.origin}${galURL(x.path)}`);
+});
+$('#galTabs').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return;
+  gal.filter = b.dataset.f; $$('#galTabs button').forEach(x => x.setAttribute('aria-selected', String(x === b))); renderGallery(); });
+$('#galView').addEventListener('click', async e => {
+  const b = e.target.closest('[data-gal]'); if (!b || !gal.cur) return;
+  const p = gal.cur, a = b.dataset.gal;
+  if (a === 'copy'){ const r = await api('/api/gallery/copy', {path: p}); toast(r.ok ? 'Файл скопирован — вставьте Ctrl+V в Telegram или Discord' : r.error); }
+  if (a === 'open') api('/api/open', {path: p});
+  if (a === 'reveal') api('/api/open', {path: p, reveal: true});
+  if (a === 'delete'){
+    if (!confirm('Переместить файл в корзину?')) return;
+    const r = await api('/api/gallery/delete', {path: p});
+    if (!r.ok) return toast(r.error);
+    $('#galMedia').innerHTML = ''; gal.items = gal.items.filter(i => i.path !== p); gal.cur = null;
+    $('#galView').hidden = true; $('.galwrap').classList.remove('open'); renderGallery(); toast('Перемещено в корзину');
+  }
+});
+$('#galDlg').addEventListener('close', () => { $('#galMedia').innerHTML = ''; });
+
+// ---- hotkey capture
+const keyName = e => {
+  const c = e.code;
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+  if (/^Digit\d$/.test(c)) return c.slice(5);
+  if (/^F\d{1,2}$/.test(c)) return c;
+  return {PrintScreen:'PrintScreen', Pause:'Pause', Insert:'Insert', Delete:'Delete', Home:'Home', End:'End', PageUp:'PageUp', PageDown:'PageDown', Space:'Space'}[c] || '';
+};
+for (const el of $$('.hk')){
+  el.addEventListener('focus', () => { el.dataset.prev = el.value; el.value = ''; el.placeholder = 'Нажмите сочетание…'; editingUntil = Date.now() + 60000; });
+  el.addEventListener('blur', () => { if (!el.value) el.value = el.dataset.prev || ''; el.placeholder = 'Выключено'; editingUntil = 0; });
+  el.addEventListener('keydown', e => {
+    e.preventDefault();
+    if (e.key === 'Escape'){ el.value = el.dataset.prev || ''; el.blur(); return; }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey){ el.dataset.prev = ''; el.value = ''; el.blur(); saveSettings(); return; }
+    const k = keyName(e); if (!k) return;
+    const combo = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win', k].filter(Boolean).join('+');
+    el.value = combo; el.dataset.prev = combo; el.blur(); saveSettings();
+  });
+}
+
+$('#addBtn').onclick = openDialog;
+$('#autostart').addEventListener('change', async e => {
+  const r = await api('/api/autostart', {on: e.target.checked});
+  if (!r.ok){ toast('Не получилось: ' + r.error); e.target.checked = !e.target.checked; }
+  else toast(e.target.checked ? 'Программа будет запускаться вместе с Windows' : 'Автозапуск выключен');
+});
+$('#rescan').onclick = async () => { await api('/api/rescan', {}); toast('Ищу телефоны в сети…'); };
+$('#dlgClose').onclick = () => $('#dlg').close();
+$('#dlg').addEventListener('close', () => api('/api/pair/cancel', {}).catch(()=>{}));
+$('#newQr').onclick = startQr;
+
+function selectTab(name){
+  for (const b of $$('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  for (const p of $$('.pane')) p.classList.toggle('active', p.dataset.pane === name);
+  if (name === 'qr') startQr(); else api('/api/pair/cancel', {}).catch(()=>{});
+}
+for (const b of $$('.tabs button')) b.onclick = () => selectTab(b.dataset.tab);
+
+async function startQr(){
+  $('#qr').innerHTML = '<div class="spin"></div>'; delete $('#qr').dataset.name;
+  const p = await api('/api/pair/qr', {});
+  $('#qr').innerHTML = p.qr; $('#qr').dataset.name = p.name;
+  $('#pairStatus').className = 'status waiting'; $('#pairMsg').textContent = p.message;
+}
+function openDialog(){ $('#dlg').showModal(); selectTab('qr'); }
+
+$('#pairCodeBtn').onclick = async () => {
+  const r = await api('/api/pair/code', {addr: $('#pAddr').value, code: $('#pCode').value});
+  const cs = $('#codeStatus'); cs.hidden = false;
+  if (!r.ok){ cs.className='status error'; $('#codeMsg').textContent = r.error; }
+  else { cs.className='status pairing'; $('#codeMsg').textContent='Сопряжение…'; }
+};
+$('#connectBtn').onclick = async () => {
+  const m = $('#connectMsg'); m.className='msg'; m.textContent='Подключаюсь…';
+  const r = await api('/api/connect', {addr: $('#cAddr').value});
+  if (r.ok){ m.className='msg ok'; m.textContent='Подключено'; setTimeout(()=>$('#dlg').close(), 900); }
+  else { m.className='msg err'; m.textContent = r.error; }
+};
+
+addEventListener('pagehide', () => navigator.sendBeacon('/api/bye?t=' + encodeURIComponent(TOKEN)));
+document.addEventListener('keydown', e => { if (e.key === 'F5'){ e.preventDefault(); location.reload(); } });
+function hud(){
+  const d = new Date(), h = d.getHours();
+  $('#hudDate').textContent = String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+  $('#hudDay').textContent = ['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ'][d.getDay()];
+  $('#hudTime').textContent = h < 1 ? 'Полночь' : h < 5 ? 'Глубокая ночь' : h < 9 ? 'Утро' : h < 12 ? 'До обеда' : h < 14 ? 'Обед' : h < 18 ? 'День' : h < 22 ? 'Вечер' : 'Ночь';
+}
+hud(); setInterval(() => { const before = $('#hudTime').textContent; hud(); if ($('#hudTime').textContent !== before){ const e = $('.hud .dw'); e.classList.remove('fx-flip'); void e.offsetWidth; e.classList.add('fx-flip'); } }, 30000);
+(() => {
+  // The big intro plays on the first launch of the day only.
+  let seen = false; const today = new Date().toDateString();
+  try{ seen = localStorage.getItem('introDay') === today; localStorage.setItem('introDay', today); }catch(e){}
+  if (seen){ document.body.classList.remove('intro'); const w = $('.wipe'); if (w) w.remove(); }
+  else setTimeout(() => { document.body.classList.remove('intro'); const w = $('.wipe'); if (w) w.remove(); }, 1500);
+})();
+poll();
+</script>
+</body>
+</html>

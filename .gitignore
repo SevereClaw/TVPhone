@@ -1,0 +1,9 @@
+# build output
+*.exe
+*.zip
+*.old
+/dist/
+# local settings / test data
+*.json
+!go.mod
+.DS_Store

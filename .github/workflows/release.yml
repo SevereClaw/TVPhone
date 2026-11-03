@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch annotated tag
+        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          go test ./...
+
+      - name: Build
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-H windowsgui -s -w -X main.appVersion=$VER" \
+            -o "dist/Телефон на ПК.exe" .
+
+      - name: Get latest scrcpy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R Genymobile/scrcpy -p 'scrcpy-win64-*.zip' -D scrcpy-dl
+          ls scrcpy-dl
+
+      - name: Package
+        run: |
+          python3 - <<'PY'
+          import glob, os, zipfile
+          ver = os.environ["VER"]
+          top = f"TVPhone-{ver}/"
+          src = zipfile.ZipFile(glob.glob("scrcpy-dl/scrcpy-win64-*.zip")[0])
+          out = zipfile.ZipFile(f"dist/TVPhone-{ver}.zip", "w", zipfile.ZIP_DEFLATED, compresslevel=9)
+          for info in src.infolist():
+              if info.is_dir():
+                  continue
+              name = info.filename.split("/", 1)[-1]  # drop scrcpy's own top folder
+              if "/" in name or not name:
+                  continue
+              out.writestr(top + name, src.read(info))
+          out.write("dist/Телефон на ПК.exe", top + "Телефон на ПК.exe")
+          text = open("docs/Как пользоваться.txt", encoding="utf-8").read().replace("\r\n", "\n").replace("\n", "\r\n")
+          out.writestr(top + "Как пользоваться.txt", "﻿" + text)
+          out.close()
+          print(out.filename, os.path.getsize(f"dist/TVPhone-{ver}.zip"))
+          PY
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN PGP/,$d' > notes.md
+          [ -s notes.md ] || echo "TVPhone $VER" > notes.md
+          gh release create "$GITHUB_REF_NAME" "dist/TVPhone-$VER.zip" \
+            --title "TVPhone $VER" --notes-file notes.md --latest
