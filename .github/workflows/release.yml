@@ -1,8 +1,12 @@
 name: Release
 
+# A release is made when VERSION on main changes to a version that has no release yet
+# (or when a v* tag is pushed). CI creates the tag itself.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,29 +19,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch annotated tag
-        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+      - name: Version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            VER="${GITHUB_REF_NAME#v}"
+            git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          else
+            VER="$(tr -d ' \r\n' < VERSION)"
+          fi
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          echo "TAG=v$VER" >> "$GITHUB_ENV"
+          if gh release view "v$VER" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$VER already exists, nothing to do"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-go@v5
+        if: steps.ver.outputs.skip != '1'
         with:
           go-version: "1.24"
 
       - name: Vet and test
+        if: steps.ver.outputs.skip != '1'
         run: |
           go vet ./...
           GOOS=windows GOARCH=amd64 go vet ./...
           go test ./...
 
       - name: Build
+        if: steps.ver.outputs.skip != '1'
         run: |
-          VER="${GITHUB_REF_NAME#v}"
-          echo "VER=$VER" >> "$GITHUB_ENV"
           mkdir -p dist
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
             -ldflags "-H windowsgui -s -w -X main.appVersion=$VER" \
             -o "dist/Телефон на ПК.exe" .
 
       - name: Get latest scrcpy
+        if: steps.ver.outputs.skip != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -45,6 +66,7 @@ jobs:
           ls scrcpy-dl
 
       - name: Package
+        if: steps.ver.outputs.skip != '1'
         run: |
           python3 - <<'PY'
           import glob, os, zipfile
@@ -67,10 +89,15 @@ jobs:
           PY
 
       - name: Publish release
+        if: steps.ver.outputs.skip != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN PGP/,$d' > notes.md
+          if [ -f "docs/releases/$VER.md" ]; then
+            cp "docs/releases/$VER.md" notes.md
+          else
+            git tag -l --format='%(contents)' "$TAG" | sed '/-----BEGIN PGP/,$d' > notes.md
+          fi
           [ -s notes.md ] || echo "TVPhone $VER" > notes.md
-          gh release create "$GITHUB_REF_NAME" "dist/TVPhone-$VER.zip" \
+          gh release create "$TAG" "dist/TVPhone-$VER.zip" --target "$GITHUB_SHA" \
             --title "TVPhone $VER" --notes-file notes.md --latest
