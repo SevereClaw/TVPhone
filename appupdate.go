@@ -160,7 +160,7 @@ func (a *App) installAppUpdate() error {
 	return nil // the new version takes over from here
 }
 
-// appUpdateLoop: check soon after start and every 3 hours; install automatically
+// appUpdateLoop: check soon after start and every hour; install automatically
 // (if enabled) as soon as no phone window is open.
 func (a *App) appUpdateLoop() {
 	first := 20 * time.Second
@@ -193,6 +193,6 @@ func (a *App) appUpdateLoop() {
 			}
 			a.installAppUpdate()
 		}
-		time.Sleep(3 * time.Hour)
+		time.Sleep(time.Hour)
 	}
 }

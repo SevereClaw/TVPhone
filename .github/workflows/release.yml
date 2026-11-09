@@ -1,12 +1,21 @@
 name: Release
 
-# A release is made when VERSION on main changes to a version that has no release yet
-# (or when a v* tag is pushed). CI creates the tag itself.
+# Every push to main that changes the program publishes a new version automatically:
+# the next number after the latest release (3.0 → 3.1 → 3.2 …). To jump to a bigger
+# number, write it into VERSION. Add [skip release] to a commit message to skip.
 on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "README.md"
+      - "docs/releases/**"
+      - ".gitignore"
   workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -23,15 +32,33 @@ jobs:
         id: ver
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
         run: |
+          case "$HEAD_MSG" in *"[skip release]"*) echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0;; esac
+          LAST="$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
+          LASTV="${LAST#v}"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             VER="${GITHUB_REF_NAME#v}"
             git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           else
-            VER="$(tr -d ' \r\n' < VERSION)"
+            FILEV="$(tr -d ' \r\n' < VERSION)"
+            # newer of VERSION and (latest release + 0.1)
+            VER="$(python3 - "$LASTV" "$FILEV" <<'PY'
+          import sys
+          p = lambda v: [int(x) for x in (v or "0").split(".")] + [0, 0]
+          last, file = sys.argv[1], sys.argv[2]
+          if not last:
+              print(file); sys.exit()
+          a = p(last)
+          nxt = f"{a[0]}.{a[1] + 1}"
+          print(file if p(file)[:3] > p(nxt)[:3] else nxt)
+          PY
+          )"
           fi
+          echo "Latest release: ${LAST:-none}, new version: $VER"
           echo "VER=$VER" >> "$GITHUB_ENV"
           echo "TAG=v$VER" >> "$GITHUB_ENV"
+          echo "LAST=$LAST" >> "$GITHUB_ENV"
           if gh release view "v$VER" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release v$VER already exists, nothing to do"
             echo "skip=1" >> "$GITHUB_OUTPUT"
@@ -95,8 +122,11 @@ jobs:
         run: |
           if [ -f "docs/releases/$VER.md" ]; then
             cp "docs/releases/$VER.md" notes.md
-          else
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
             git tag -l --format='%(contents)' "$TAG" | sed '/-----BEGIN PGP/,$d' > notes.md
+          elif [ -n "$LAST" ] && git rev-parse -q --verify "refs/tags/$LAST" >/dev/null; then
+            # what changed since the previous release: commit titles
+            git log --no-merges --format='- %s' "$LAST..HEAD" | grep -v '\[skip release\]' > notes.md || true
           fi
           [ -s notes.md ] || echo "TVPhone $VER" > notes.md
           gh release create "$TAG" "dist/TVPhone-$VER.zip" --target "$GITHUB_SHA" \
